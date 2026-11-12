@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory=$true)][string]$Version,
   [string]$NotesFile = "",
   [switch]$DryRun
