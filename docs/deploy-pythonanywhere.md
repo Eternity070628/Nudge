@@ -1,6 +1,10 @@
 # 部署到 PythonAnywhere（GitHub 一推送，网页就更新）
 
-线上地址：**https://eternity0628.pythonanywhere.com** （免费计划，出网白名单不含 DeepSeek，线上固定走规则引擎）
+线上地址：**https://eternity0628.pythonanywhere.com**
+
+模型怎么接：在页面右上角「模型设置」里填 Key 并保存 → 自动切到 `model` 模式 → 点「测试连接」当场验证。
+（2026-11-12 实测：PA 免费帐号能出网访问 `api.deepseek.com`，返回 401 说明连通，只是缺 Key；
+`api.modelarts-maas.com` 会被 PA 代理 403 拦掉。）
 
 一条链路：
 
@@ -58,10 +62,11 @@ git push main
 
    ```bash
    curl -s https://<用户名>.pythonanywhere.com/api/health
-   # {"ok":true,"llm":false,"model":"deepseek-v4.1-flash","time":"..."}
+   # {"ok":true,"llm":false,"mode":"auto","model":"deepseek-v4.1-flash","llm_error":{...},"commit":"...","time":"..."}
    ```
 
-   `llm:false` 是预期的：免费版出网白名单里没有 api.deepseek.com，线上走规则引擎。
+   刚部署完 `llm:false` 是预期的：服务端还没有 Key。到页面「模型设置」里填一次 Key，
+   `mode` 会变成 `model`、`llm` 变 `true`，抽取就会先走大模型再用规则校验证据。
 
 4. 不切 web app 也能先自测：在 console 里用临时 socket 起一次，不占用线上入口。
 
@@ -110,13 +115,19 @@ bash ~/nudge/pythonanywhere/deploy.sh
 | 项 | 说明 |
 |---|---|
 | 闲置休眠 | 一段时间没人访问会睡，首次请求慢 1–2 秒，之后正常 |
-| 出网白名单 | github.com、PyPI、api.pythonanywhere.com 可访问；DeepSeek / MaaS 不行，所以默认 `NUDGE_DISABLE_LLM=1` 走规则引擎 |
+| 出网白名单 | github.com、PyPI、api.deepseek.com 可访问（实测 401）；`api.modelarts-maas.com` 被代理 403；启动脚本里的 `NUDGE_DISABLE_LLM=1` 只是「没配 Key 时的保守默认」，页面存了 Key 就被 `llm_mode=model` 覆盖 |
 | 数据库 | `~/nudge/backend/data/nudge.db`，不在 git 里，`git reset --hard` 不会删；备份就下载这个文件 |
 | CPU 配额 | 每天 100 秒左右，演示前别跑压测 |
 | 自定义域名 | 免费版只能用 `<用户名>.pythonanywhere.com` |
 | 并发 console | 最多 2 个，长时间挂着会占用 |
 
-想开 LLM 有两条路：把模型域名加进 PA 白名单（付费），或换一个可访问的 OpenAI 兼容网关，加 `MAAS_BASE_URL` 环境变量。
+想核实某个域名通不通，在 console 里一条命令即可（401/404 都算通，能收到 HTTP 响应就说明没被代理拦）：
+
+```bash
+curl -sS -m 12 -o /dev/null -w '%{http_code}' https://api.deepseek.com/v1/models
+```
+
+想换供应商：页面「模型设置」里改接入地址（任何 OpenAI 兼容网关都行），或设 `MAAS_BASE_URL` / `MAAS_MODEL` 环境变量。
 
 ## 五、排错
 

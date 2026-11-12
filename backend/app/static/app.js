@@ -140,6 +140,29 @@ async function loadSettings() {
   }
 }
 
+async function testConnection() {
+  const btn = $("setting-test");
+  const box = $("setting-status");
+  btn.disabled = true;
+  btn.textContent = "连接中…";
+  box.textContent = "正在请求 " + ($("setting-base").value.trim() || "默认地址") + " …";
+  try {
+    const r = await api("/api/llm-test?kind=chat");
+    if (r.ok) {
+      box.textContent = "连接成功 · " + r.model + " 回复：" + (r.reply || "（空）");
+    } else if (r.reason === "no_key") {
+      box.textContent = "还没有 Key：先在上面填好 Key 并保存，再测试";
+    } else {
+      box.textContent = "连接失败 " + (r.status || "") + "：" + (r.error || r.body || "未知错误");
+    }
+  } catch (e) {
+    box.textContent = "请求失败：" + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "测试连接";
+  }
+}
+
 function openSettings() {
   const dialog = $("settings-dialog");
   if (!dialog.open) dialog.showModal();
@@ -162,7 +185,7 @@ async function saveSettings(event) {
     });
     $("setting-key").value = "";
     $("setting-status").textContent = s.has_key
-      ? "已保存，Key 尾号 " + s.key_hint
+      ? "已保存，Key 尾号 " + s.key_hint + "，点「测试连接」验证一次"
       : "已保存，但还没有 Key";
     await loadHealth();
   } catch (e) {
@@ -312,6 +335,7 @@ async function demoMode() {
 
 $("settings-btn").onclick = openSettings;
 $("setting-cancel").onclick = () => $("settings-dialog").close();
+$("setting-test").onclick = testConnection;
 $("settings-form").onsubmit = saveSettings;
 
 loadHealth();

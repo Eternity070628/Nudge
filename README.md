@@ -93,7 +93,8 @@ nudge/
 | GET | /api/calendar/{token}.ics | 日历订阅（含 VALARM 提前 1 天） |
 | POST | /api/feedback | 三键反馈（有用/无关/时间错） |
 | GET | /api/settings | 读取模型接入地址/模型/是否已保存 Key |
-| POST | /api/settings | 保存接入地址、模型、API Key（Key 不回显） |
+| POST | /api/settings | 保存接入地址、模型、API Key（Key 不回显；存了 Key 自动切 `model` 模式） |
+| GET | /api/llm-test?kind=chat\|models | 真发一次最小请求，返回状态码/报错原文，用来排查 Key 与模型名 |
 | POST | /api/deploy | CI 钩子：git pull + 重载（需 `NUDGE_DEPLOY_TOKEN`，未配置时不存在） |
 
 ## 6. 模型接入
@@ -114,7 +115,8 @@ nudge/
 - 完整步骤、Secrets 配置、免费版限制、排错：[`docs/deploy-pythonanywhere.md`](docs/deploy-pythonanywhere.md)
 - 形态说明：PA 免费帐号只能有 1 个 web app，本帐号是 **custom command** 类型（Command 字段只读），所以由 `~/start_opc.sh` 用 `uvicorn --uds "$DOMAIN_SOCKET" --reload --reload-dir backend` 拉起 Nudge；免费账号的 reload API 返回 403，重载靠 uvicorn 的 reloader
 - 手动兜底：PA 上执行 `bash ~/nudge/pythonanywhere/deploy.sh`
-- 免费版出网白名单不含 DeepSeek，线上默认走规则引擎（`NUDGE_DISABLE_LLM=1`），这是设计内的降级（`/api/health` 返回 `llm:false`）
+- 线上是 PythonAnywhere 免费帐号。启动脚本里 `NUDGE_DISABLE_LLM=1` 只是「还没配 Key 时的保守默认」；页面「模型设置」存了 Key 就以页面为准（`llm_mode=model`），`/api/health` 的 `llm` 变 `true`。实测 `api.deepseek.com` 在 PA 可出网（返回 401 = 连通），`api.modelarts-maas.com` 会被 403 拦
+- 排查模型问题优先用 `GET /api/llm-test?kind=models`：能拿到模型列表说明 Key 与地址都对，只剩模型名要换
 
 ## 8. 已知限制
 

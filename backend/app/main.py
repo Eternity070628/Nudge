@@ -43,6 +43,8 @@ def _public_settings() -> dict[str, Any]:
         "model": model,
         "has_key": bool(key),
         "key_hint": ("****" + key[-4:]) if len(key) >= 4 else ("****" if key else ""),
+        "mode": llm.mode() or "auto",
+        "available": llm.available(),
     }
 
 
@@ -70,7 +72,9 @@ def health() -> dict[str, Any]:
     return {
         "ok": True,
         "llm": llm.available(),
+        "mode": llm.mode() or "auto",
         "model": llm.current_model(),
+        "llm_error": llm.last_error(),
         "commit": _commit(),
         "time": datetime.now().isoformat(timespec="seconds"),
     }
@@ -90,11 +94,22 @@ def api_save_settings(body: SettingsUpdate) -> dict[str, Any]:
         values["model"] = body.model.strip()
     if body.clear_key:
         values["api_key"] = ""
+        values["llm_mode"] = "auto"
     elif body.api_key.strip():
         values["api_key"] = body.api_key.strip()
+        # 页面上主动存了 Key，就认为他要真调模型：覆盖部署环境里的保守默认
+        values["llm_mode"] = "model"
     if values:
         db.save_settings(values)
     return _public_settings()
+
+
+@app.get("/api/llm-test")
+def api_llm_test(kind: str = Query("chat", pattern="^(chat|models)$")) -> dict[str, Any]:
+    """真发一次最小请求，把状态码与报错原文摊开——排查「为什么没调到模型」。"""
+    result = llm.probe(kind=kind)
+    result["mode"] = llm.mode() or "auto"
+    return result
 
 
 @app.post("/api/extract")
