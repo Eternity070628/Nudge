@@ -23,6 +23,31 @@ git push main
 重载怎么来的：启动命令带 `--reload --reload-dir backend`，`git reset --hard` 改写文件后 uvicorn 自己重启 worker。
 （试过 PythonAnywhere 的 web app reload API，免费账号的 custom-command 应用返回 `403 You do not have permission to perform this action.`，于是放弃了那条路。）
 
+## 零、把模型真正接上（2026-11-12 实测）
+
+线上出网有两个坑，踩过一次就别再踩：
+
+1. **必须走 PythonAnywhere 的代理**。web 进程里没有 `https_proxy` 环境变量，直连会得到 `Errno 111 Connection refused`；
+   代码里 `llm.proxy()` 检测到 `DOMAIN_SOCKET` / `PA_DOMAIN` 就自动用 `http://proxy.server:3128`，也可以用 `NUDGE_PROXY` 覆盖。
+2. **模型 id 要写接口认的那个**。`/v1/models` 返回的是 `deepseek-flash` 与 `deepseek-v4-pro`；
+   口头叫的 `deepseek-v4.1-flash` 不被接受（会 400 model not found），默认值已经改成 `deepseek-flash`。
+
+配置步骤（页面里做完，不用改代码）：
+
+1. 右上角「模型设置」→ 接入地址 `https://api.deepseek.com`、模型 `deepseek-flash`、粘贴 Key；
+2. 点「保存」：保存即切 `llm_mode=model`，覆盖启动脚本里 `NUDGE_DISABLE_LLM=1` 的保守默认；
+3. 点「测试连接」：成功会直接显示模型的原话；失败会显示状态码与响应体原文；
+4. 命令行复核：
+
+```bash
+curl -s https://eternity0628.pythonanywhere.com/api/health
+# {"ok":true,"llm":true,"mode":"model","model":"deepseek-flash",...}
+curl -s "https://eternity0628.pythonanywhere.com/api/llm-test?kind=models"
+```
+
+验收口径（答辩可以现场演示）：贴一条相对时间的通知「报名截止时间为下周三下午四点前」，规则引擎解不出来，
+线上返回 `2026-11-18`，说明抽取确实经过了模型；每个字段还要过 `verifier` 的逐字证据校验才被采纳。
+
 ## 一、实际采用的形态：custom-command + uvicorn --uds
 
 免费帐号只能有 **1 个 web app**。本帐号上那个 app（`eternity0628.pythonanywhere.com`）创建时选的是 **custom command**，

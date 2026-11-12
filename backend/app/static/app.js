@@ -117,7 +117,10 @@ async function loadHealth() {
   try {
     const h = await api("/api/health");
     const model = h.model || "deepseek-v4.1-flash";
-    $("engine").textContent = h.llm ? "大模型已接入 · " + model : "规则模式 · 未配模型 Key";
+    const broken = h.llm_error && h.llm_error.error;
+    $("engine").textContent = h.llm
+      ? "大模型已接入 · " + model
+      : (broken ? "模型不可用 · 打开模型设置看原因" : "规则模式 · 未配模型 Key");
     $("llm-note").textContent = h.llm
       ? "抽取由 " + model + " 补充，规则做证据校验"
       : "未配置模型 Key，抽取全部由本地规则完成";

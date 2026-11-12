@@ -165,7 +165,7 @@ def probe(kind: str = "chat", timeout: int = 30) -> dict[str, Any]:
         payload = {
             "model": model,
             "temperature": 0.0,
-            "max_tokens": 16,
+            "max_tokens": 32,
             "messages": [
                 {"role": "system", "content": "只回答一个字：好"},
                 {"role": "user", "content": "ping"},
@@ -187,7 +187,11 @@ def probe(kind: str = "chat", timeout: int = 30) -> dict[str, Any]:
             if kind == "models":
                 out["models"] = [m.get("id") for m in data.get("data", [])][:40]
             else:
-                out["reply"] = data["choices"][0]["message"]["content"][:200]
+                choice = data["choices"][0]
+                message = choice.get("message", {})
+                text = message.get("content") or message.get("reasoning_content") or ""
+                out["reply"] = text.strip()[:200]
+                out["finish_reason"] = choice.get("finish_reason", "")
         except Exception:
             out["body"] = body[:300]
     else:
