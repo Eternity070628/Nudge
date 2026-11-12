@@ -229,9 +229,18 @@ def api_deploy(x_deploy_token: str = Header(""), token: str = Query("")) -> dict
             raise HTTPException(500, "git " + " ".join(args) + " 失败: " + detail)
     after = git("rev-parse", "--short", "HEAD").stdout.strip()
 
+    # 依赖只在 requirements.txt 真变了才装：PythonAnywhere 免费版 web app 进程拉 PyPI
+    # 会偶发 "Network is unreachable"，而每次部署都装一遍纯属浪费时间。
+    # NUDGE_DEPLOY_PIP=1 强制装，=0 强制跳过。
     pip_note = "skipped"
     req = REPO_DIR / "pythonanywhere" / "requirements.txt"
-    if req.exists() and os.getenv("NUDGE_DEPLOY_PIP", "1") != "0":
+    forced = os.getenv("NUDGE_DEPLOY_PIP", "").strip().lower()
+    changed = False
+    if before and after and before != after:
+        diff = git("diff", "--name-only", before, after).stdout
+        changed = any(line.strip().endswith("requirements.txt") for line in diff.splitlines())
+    want_pip = changed if forced != "1" and forced != "0" else forced == "1"
+    if want_pip and req.exists():
         install = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(req)],
                                  cwd=REPO_DIR, capture_output=True, text=True,
                                  encoding="utf-8", errors="replace", timeout=300)

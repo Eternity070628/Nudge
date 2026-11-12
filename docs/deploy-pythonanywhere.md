@@ -86,6 +86,10 @@ git push main
 
 验证方式：改 README 一个字 → push → 等 30 秒 → 刷新页面。也可以在 Actions 页面点 **Run workflow** 手动触发。
 
+依赖安装的策略：**只有 `requirements.txt` 真的变了才会装**（钩子里用 `git diff --name-only before after` 判断）。
+PythonAnywhere 免费版的 web app 进程拉 PyPI 会偶发 `Network is unreachable`，而每次部署都重装一遍既慢又吵。
+真需要强制装，把启动脚本里的 `NUDGE_DEPLOY_PIP` 设成 `1`；强制跳过设成 `0`。
+
 安全注意：`NUDGE_DEPLOY_TOKEN` 是随机长 token，只存在 PA 的脚本和 GitHub Secret 里；接口用 `hmac.compare_digest` 比对，
 没配 token 直接 404，错了返回 403，且只能把代码 reset 到 `origin/main`，不能执行任意命令。
 
