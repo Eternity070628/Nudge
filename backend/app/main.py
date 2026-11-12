@@ -217,7 +217,8 @@ def api_deploy(x_deploy_token: str = Header(""), token: str = Query("")) -> dict
         raise HTTPException(400, "not a git checkout")
 
     def git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(["git", *args], cwd=REPO_DIR, capture_output=True, text=True, timeout=120)
+        return subprocess.run(["git", *args], cwd=REPO_DIR, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=120)
 
     before = git("rev-parse", "--short", "HEAD").stdout.strip()
     for args in (("fetch", "--depth=1", "origin", "main"), ("reset", "--hard", "origin/main")):
@@ -231,7 +232,8 @@ def api_deploy(x_deploy_token: str = Header(""), token: str = Query("")) -> dict
     req = REPO_DIR / "pythonanywhere" / "requirements.txt"
     if req.exists() and os.getenv("NUDGE_DEPLOY_PIP", "1") != "0":
         install = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(req)],
-                                 cwd=REPO_DIR, capture_output=True, text=True, timeout=300)
+                                 cwd=REPO_DIR, capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=300)
         pip_note = "ok" if install.returncode == 0 else (install.stderr or install.stdout).strip()[-200:]
 
     wsgi = REPO_DIR / "pythonanywhere" / "wsgi.py"
