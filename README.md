@@ -105,11 +105,14 @@ nudge/
 
 ## 7. 线上部署
 
-已按 PythonAnywhere 免费计划设计：GitHub push → Actions → PA 上的 `/api/deploy` 自己拉代码并重载，不需要 SSH，也不需要常驻任务。
+线上运行地址：**https://eternity0628.pythonanywhere.com** （PythonAnywhere 免费计划）
 
-- 部署步骤、Secrets 配置、免费版限制、排错：[`docs/deploy-pythonanywhere.md`](docs/deploy-pythonanywhere.md)
+链路：GitHub push → Actions → PA 上的 `/api/deploy` 自己 `git reset --hard origin/main`、装依赖、调 PA API 重载进程，不需要 SSH，也不需要常驻任务。
+
+- 完整步骤、Secrets 配置、免费版限制、排错：[`docs/deploy-pythonanywhere.md`](docs/deploy-pythonanywhere.md)
+- 形态说明：PA 免费帐号只能有 1 个 web app，本帐号是 **custom command** 类型（Command 字段只读），所以由 `~/start_opc.sh` 用 `uvicorn --uds "$DOMAIN_SOCKET"` 拉起 Nudge；重载必须走 `PA_API_TOKEN`
 - 手动兜底：PA 上执行 `bash ~/nudge/pythonanywhere/deploy.sh`
-- 免费版出网白名单不含 DeepSeek，线上默认走规则引擎（`NUDGE_DISABLE_LLM=1`），这是设计内的降级
+- 免费版出网白名单不含 DeepSeek，线上默认走规则引擎（`NUDGE_DISABLE_LLM=1`），这是设计内的降级（`/api/health` 返回 `llm:false`）
 
 ## 8. 已知限制
 
