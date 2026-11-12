@@ -74,10 +74,22 @@ try {
   $rel = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$slug/releases" -Headers $h -Body $bytes -ContentType "application/json; charset=utf-8" -TimeoutSec 60
 } catch {
   $resp = $_.Exception.Response
-  if ($resp -and $resp.StatusCode.value__ -eq 422) {
-    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$slug/releases/tags/$Version" -Headers $h -TimeoutSec 30
-    Write-Host "release: 已存在，复用现有 release" -ForegroundColor Yellow
-  } else { throw }
+  $code = if ($resp) { $resp.StatusCode.value__ } else { 0 }
+  $detail = ""
+  if ($resp) {
+    $sr = New-Object IO.StreamReader($resp.GetResponseStream())
+    $detail = $sr.ReadToEnd()
+  }
+  if ($code -eq 422) {
+    try {
+      $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$slug/releases/tags/$Version" -Headers $h -TimeoutSec 30
+      Write-Host "release: 已存在，复用现有 release" -ForegroundColor Yellow
+    } catch {
+      throw "release 创建失败 422，按 tag 也取不到: $detail"
+    }
+  } else {
+    throw "release 创建失败 $code : $detail"
+  }
 }
 Write-Host "release: $($rel.html_url)"
 
