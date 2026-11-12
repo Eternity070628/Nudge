@@ -79,6 +79,25 @@ def _record(ok: bool, status: int, error: str = "") -> None:
     }
 
 
+def proxy() -> str:
+    """出网代理：环境变量优先；PythonAnywhere 的 web 进程里没有 proxy 环境变量，但必须走它的代理。"""
+    for name in ("NUDGE_PROXY", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    if os.getenv("DOMAIN_SOCKET") or os.getenv("PA_DOMAIN"):
+        return "http://proxy.server:3128"
+    return ""
+
+
+def _opener() -> urllib.request.OpenerDirector:
+    addr = proxy()
+    if addr:
+        handler = urllib.request.ProxyHandler({"http": addr, "https": addr})
+        return urllib.request.build_opener(handler)
+    return urllib.request.build_opener()
+
+
 def _request(url: str, key: str, payload: dict[str, Any] | None, timeout: int) -> dict[str, Any]:
     """发一次请求，把 HTTP 状态码和响应体原样带回来，不做静默吞异常。"""
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
@@ -91,8 +110,9 @@ def _request(url: str, key: str, payload: dict[str, Any] | None, timeout: int) -
         },
         method="POST" if data else "GET",
     )
+    opener = _opener()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with opener.open(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", "replace")
             _record(True, response.status)
             return {"ok": True, "status": response.status, "body": body}
@@ -158,6 +178,7 @@ def probe(kind: str = "chat", timeout: int = 30) -> dict[str, Any]:
         "model": model,
         "base": base,
         "kind": kind,
+        "proxy": proxy().split("//")[-1],
     }
     if result["ok"]:
         body = result.get("body", "")
