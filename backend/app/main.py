@@ -92,13 +92,14 @@ def api_save_settings(body: SettingsUpdate) -> dict[str, Any]:
         values["base_url"] = body.base_url.strip().rstrip("/")
     if body.model.strip():
         values["model"] = body.model.strip()
+    has_key = bool(db.get_settings().get("api_key")) or bool(body.api_key.strip())
     if body.clear_key:
         values["api_key"] = ""
         values["llm_mode"] = "auto"
     elif body.api_key.strip():
         values["api_key"] = body.api_key.strip()
-        # 页面上主动存了 Key，就认为他要真调模型：覆盖部署环境里的保守默认
-        values["llm_mode"] = "model"
+    # 在「模型设置」里点保存 = 我要用模型：只要有 Key 就覆盖部署环境的保守默认
+    values["llm_mode"] = "model" if has_key and not body.clear_key else "auto"
     if values:
         db.save_settings(values)
     return _public_settings()

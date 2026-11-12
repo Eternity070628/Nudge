@@ -10,7 +10,9 @@ DB_PATH = DATA_DIR / "nudge.db"
 # 华为云 MaaS（盘古 / DeepSeek）。不配 key 时自动降级为规则抽取器，离线也能跑。
 MAAS_BASE_URL = os.getenv("MAAS_BASE_URL", "https://api.deepseek.com").rstrip("/")
 MAAS_API_KEY = os.getenv("MAAS_API_KEY", "")
-MAAS_MODEL = os.getenv("MAAS_MODEL", "deepseek-v4.1-flash")
+# 线上 /v1/models 实际返回的 id 是 deepseek-flash 与 deepseek-v4-pro；
+# 早期写的 deepseek-v4.1-flash 只是口头叫法，不被接口接受（400 model not found）
+MAAS_MODEL = os.getenv("MAAS_MODEL", "deepseek-flash")
 
 TZ = "Asia/Shanghai"
 
