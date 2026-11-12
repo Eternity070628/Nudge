@@ -12,7 +12,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.agents import extractor, verifier  # noqa: E402
+from app.agents import extractor, llm, verifier  # noqa: E402
+
+llm.disable()  # 评测强制规则模式，保证 20 条结果可复现
 
 CASES = json.loads((ROOT / "eval" / "eval_set.json").read_text(encoding="utf-8"))
 

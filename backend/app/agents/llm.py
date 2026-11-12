@@ -1,43 +1,71 @@
-"""LLM 客户端：有 Key 走华为云 MaaS，没有就返回 None，让上层降级到规则抽取。
+"""LLM 客户端：默认指向 DeepSeek，OpenAI 兼容接口。
 
-刻意不用任何第三方 SDK，只用标准库，保证评委机器上能跑。
+Key 优先级：页面设置（SQLite）> 环境变量 MAAS_API_KEY。
+没有 Key 时返回 None，让 extractor 自动降级到规则抽取。
 """
 from __future__ import annotations
 
 import json
 import urllib.request
 
-from ..config import MAAS_API_KEY, MAAS_BASE_URL, MAAS_MODEL
+from .. import config, db
+
+_disabled = False
+
+
+def current() -> tuple[str, str, str]:
+    """返回 (base_url, model, api_key)；页面设置覆盖环境变量。"""
+    saved = db.get_settings()
+    base = (saved.get("base_url") or config.MAAS_BASE_URL).rstrip("/")
+    model = saved.get("model") or config.MAAS_MODEL
+    key = saved["api_key"] if "api_key" in saved else config.MAAS_API_KEY
+    return base, model, key
+
+
+def current_model() -> str:
+    return current()[1]
 
 
 def available() -> bool:
-    return bool(MAAS_API_KEY and MAAS_BASE_URL)
+    if _disabled:
+        return False
+    base, _, key = current()
+    return bool(base and key)
+
+
+def disable() -> None:
+    """评测时强制规则模式，保证结果可复现。"""
+    global _disabled
+    _disabled = True
 
 
 def chat(system: str, user: str, temperature: float = 0.0, timeout: int = 60) -> str | None:
     """调用 OpenAI 兼容接口。失败返回 None，不抛异常。"""
-    if not available():
+    if _disabled:
+        return None
+    base, model, key = current()
+    if not base or not key:
         return None
     payload = {
-        "model": MAAS_MODEL,
+        "model": model,
         "temperature": temperature,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
     }
-    req = urllib.request.Request(
-        MAAS_BASE_URL + "/chat/completions",
+    request = urllib.request.Request(
+        base + "/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + MAAS_API_KEY,
+            "Authorization": "Bearer " + key,
         },
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
         return data["choices"][0]["message"]["content"]
     except Exception:
         return None

@@ -10,18 +10,36 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from . import db
-from .agents import extractor, matcher, planner, verifier
+from .agents import extractor, llm, matcher, planner, verifier
 from .config import BASE_DIR
 from .models import EventCreate, ExtractRequest
 from .services import ics
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="0.1.0")
+app = FastAPI(title="Nudge · 校园截止管家", version="0.1.2")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()
+
+
+class SettingsUpdate(BaseModel):
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""
+    clear_key: bool = False
+
+
+def _public_settings() -> dict[str, Any]:
+    base, model, key = llm.current()
+    return {
+        "base_url": base,
+        "model": model,
+        "has_key": bool(key),
+        "key_hint": ("****" + key[-4:]) if len(key) >= 4 else ("****" if key else ""),
+    }
 
 
 def _decorate(event: dict[str, Any]) -> dict[str, Any]:
@@ -34,7 +52,33 @@ def _decorate(event: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "llm": extractor.llm.available(), "time": datetime.now().isoformat(timespec="seconds")}
+    return {
+        "ok": True,
+        "llm": llm.available(),
+        "model": llm.current_model(),
+        "time": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+@app.get("/api/settings")
+def api_settings() -> dict[str, Any]:
+    return _public_settings()
+
+
+@app.post("/api/settings")
+def api_save_settings(body: SettingsUpdate) -> dict[str, Any]:
+    values: dict[str, str] = {}
+    if body.base_url.strip():
+        values["base_url"] = body.base_url.strip().rstrip("/")
+    if body.model.strip():
+        values["model"] = body.model.strip()
+    if body.clear_key:
+        values["api_key"] = ""
+    elif body.api_key.strip():
+        values["api_key"] = body.api_key.strip()
+    if values:
+        db.save_settings(values)
+    return _public_settings()
 
 
 @app.post("/api/extract")

@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS user_events (
 CREATE TABLE IF NOT EXISTS feedback (
   id TEXT PRIMARY KEY, user_id TEXT, event_id TEXT, kind TEXT, created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL
+);
 """
 
 
@@ -157,3 +160,23 @@ def feedback_stats(user_id: str) -> dict[str, int]:
     with conn() as c:
         rows = c.execute("SELECT kind, COUNT(*) n FROM feedback WHERE user_id=? GROUP BY kind", (user_id,)).fetchall()
     return {r["kind"]: r["n"] for r in rows}
+
+
+def get_settings() -> dict[str, str]:
+    """模型设置存本机 SQLite；表不存在时返回空，保证评测/冷启动不报错。"""
+    try:
+        with conn() as c:
+            rows = c.execute("SELECT key, value FROM settings").fetchall()
+        return {r["key"]: r["value"] for r in rows}
+    except sqlite3.OperationalError:
+        return {}
+
+
+def save_settings(values: dict[str, str]) -> None:
+    with conn() as c:
+        for key, value in values.items():
+            c.execute(
+                "INSERT INTO settings(key,value) VALUES(?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )

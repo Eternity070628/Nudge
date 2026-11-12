@@ -63,7 +63,7 @@ nudge/
 │  │  │  ├─ verifier.py     # 证据校验 + 置信度聚合
 │  │  │  ├─ matcher.py      # 画像相关度
 │  │  │  ├─ planner.py      # 紧急度 / checklist / 提醒 / 撞车
-│  │  │  └─ llm.py          # OpenAI 兼容接口（华为云 MaaS）
+│  │  │  └─ llm.py          # DeepSeek OpenAI 兼容接口
 │  │  ├─ services/
 │  │  │  ├─ seed.py         # 6 条真实感示例通知
 │  │  │  └─ ics.py          # 导出 .ics 日历订阅
@@ -90,10 +90,22 @@ nudge/
 | GET | /api/dashboard | 统计、撞车预警、周报 |
 | GET | /api/calendar/{token}.ics | 日历订阅（含 VALARM 提前 1 天） |
 | POST | /api/feedback | 三键反馈（有用/无关/时间错） |
+| GET | /api/settings | 读取模型接入地址/模型/是否已保存 Key |
+| POST | /api/settings | 保存接入地址、模型、API Key（Key 不回显） |
 
-## 6. 已知限制
+## 6. 模型接入
+
+默认配置指向 DeepSeek：
+- 接入地址：`https://api.deepseek.com`
+- 模型：`deepseek-v4.1-flash`
+- API Key：不写进仓库。首次使用点页面右上角「模型设置」填写；也可以设置环境变量 `MAAS_API_KEY`。
+
+没有 Key 时自动回退纯规则，页面状态显示「规则模式」。填写后 `/api/health` 的 `llm` 变为 `true`，抽取走「规则 + 模型补充」，模型输出仍要过 `verifier` 的逐字证据校验。Key 只保存在本机 `backend/data/nudge.db`（已 gitignore），不会进入 release 源码包；这是单机演示的本地明文存储，生产环境应改用密钥管理服务。
+
+## 7. 已知限制
 
 - 截图 OCR 依赖外部 OCR 服务，当前 Demo 只做文本入口（接口已预留 source_type=image）。
 - 用户画像目前是写死的示例用户，接学校统一身份后应改为登录态。
+- 大模型接入依赖页面设置或 `MAAS_API_KEY`；未配置时规则降级。评测脚本强制规则模式，避免模型版本影响 20/20 结果。
 - 时区固定 Asia/Shanghai；跨时区交换生场景未处理。
 - 20 条自建评测集偏小，规则对句式敏感；遇到「十一月底前」这类模糊表述会返回空而不是瞎猜（这是刻意的）。

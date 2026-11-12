@@ -17,7 +17,10 @@
       <p class="slogan">Not an alarm. A nudge.</p>
     </div>
   </div>
-  <div class="engine" id="engine">检测引擎中…</div>
+  <div class="top-right">
+    <button class="btn ghost btn-mini" id="settings-btn" type="button">模型设置</button>
+    <div class="engine" id="engine">检测引擎中…</div>
+  </div>
 </header>
 
 <main class="layout">
@@ -57,6 +60,27 @@
     </div>
   </section>
 </main>
+
+<dialog id="settings-dialog" class="settings-dialog">
+  <form id="settings-form">
+    <h3>模型接入</h3>
+    <p class="hint">默认指向 DeepSeek。API Key 只保存在本机数据库，不写入代码仓库。</p>
+    <label>接入地址
+      <input id="setting-base" placeholder="https://api.deepseek.com" autocomplete="off" />
+    </label>
+    <label>模型名
+      <input id="setting-model" placeholder="deepseek-v4.1-flash" autocomplete="off" />
+    </label>
+    <label>API Key
+      <input id="setting-key" type="password" placeholder="留空则保留已保存的 Key" autocomplete="off" />
+    </label>
+    <p class="hint" id="setting-status"></p>
+    <div class="actions">
+      <button class="btn primary" type="submit" id="setting-save">保存</button>
+      <button class="btn ghost" type="button" id="setting-cancel">取消</button>
+    </div>
+  </form>
+</dialog>
 
 <footer class="bottom">
   <span>Nudge MVP · FastAPI + SQLite · 抽取 → 校验 → 匹配 → 编排</span>

@@ -116,10 +116,60 @@ async function saveDraft(btn) {
 async function loadHealth() {
   try {
     const h = await api("/api/health");
-    $("engine").textContent = h.llm ? "华为云 MaaS 已接入" : "离线规则引擎 · 未配置 Key";
-    $("llm-note").textContent = h.llm ? "抽取由 MaaS 模型完成，规则做证据校验" : "当前为离线演示模式，抽取全部由本地规则完成";
+    const model = h.model || "deepseek-v4.1-flash";
+    $("engine").textContent = h.llm ? "大模型已接入 · " + model : "规则模式 · 未配模型 Key";
+    $("llm-note").textContent = h.llm
+      ? "抽取由 " + model + " 补充，规则做证据校验"
+      : "未配置模型 Key，抽取全部由本地规则完成";
   } catch (e) {
     $("engine").textContent = "后端未启动";
+  }
+}
+
+async function loadSettings() {
+  try {
+    const s = await api("/api/settings");
+    $("setting-base").value = s.base_url || "";
+    $("setting-model").value = s.model || "";
+    $("setting-key").value = "";
+    $("setting-status").textContent = s.has_key
+      ? "已保存 Key（尾号 " + s.key_hint + "），留空不会覆盖"
+      : "尚未保存 Key，当前走规则模式";
+  } catch (e) {
+    $("setting-status").textContent = "读取设置失败：" + e.message;
+  }
+}
+
+function openSettings() {
+  const dialog = $("settings-dialog");
+  if (!dialog.open) dialog.showModal();
+  loadSettings();
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  const btn = $("setting-save");
+  btn.disabled = true;
+  btn.textContent = "保存中…";
+  try {
+    const s = await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({
+        base_url: $("setting-base").value.trim(),
+        model: $("setting-model").value.trim(),
+        api_key: $("setting-key").value.trim(),
+      }),
+    });
+    $("setting-key").value = "";
+    $("setting-status").textContent = s.has_key
+      ? "已保存，Key 尾号 " + s.key_hint
+      : "已保存，但还没有 Key";
+    await loadHealth();
+  } catch (e) {
+    $("setting-status").textContent = "保存失败：" + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "保存";
   }
 }
 
@@ -260,6 +310,11 @@ async function demoMode() {
   } catch (e) {}
 }
 
+$("settings-btn").onclick = openSettings;
+$("setting-cancel").onclick = () => $("settings-dialog").close();
+$("settings-form").onsubmit = saveSettings;
+
 loadHealth();
+loadSettings();
 loadSamples();
 loadBoard().then(demoMode);

@@ -22,6 +22,17 @@ body{
 .brand .cn{font-size:12px;color:var(--dim);font-weight:400;margin-left:8px;letter-spacing:.5px}
 .slogan{margin:3px 0 0;font-size:11.5px;color:var(--dim);letter-spacing:.6px}
 .engine{font-size:12px;color:var(--dim);border:1px solid var(--line);padding:7px 12px;border-radius:999px;background:var(--panel)}
+.top-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.btn-mini{padding:7px 12px;font-size:12px;border-radius:999px}
+.settings-dialog{width:min(460px,92vw);padding:22px;border:1px solid var(--line);border-radius:18px;
+  background:var(--bg);color:var(--ink);box-shadow:0 24px 60px rgba(0,0,0,.45)}
+.settings-dialog::backdrop{background:rgba(0,0,0,.62)}
+.settings-dialog h3{margin:0 0 6px;font-size:17px}
+.settings-dialog label{display:block;margin-top:12px;font-size:12px;color:var(--dim)}
+.settings-dialog input{width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+  background:rgba(0,0,0,.28);color:var(--ink);font:inherit;font-size:13px;outline:none}
+.settings-dialog input:focus{border-color:rgba(247,178,103,.55)}
+.settings-dialog .actions{margin-top:16px}
 
 .layout{position:relative;z-index:2;max-width:1400px;margin:14px auto 40px;padding:0 44px;
   display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:24px;align-items:start}
