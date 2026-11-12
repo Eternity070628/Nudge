@@ -56,12 +56,24 @@ def _decorate(event: dict[str, Any]) -> dict[str, Any]:
     return event
 
 
+def _commit() -> str:
+    """线上是哪个 commit，一眼可查（答辩演示用）。"""
+    try:
+        done = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=BASE_DIR.parent,
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=10)
+        return done.stdout.strip() if done.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     return {
         "ok": True,
         "llm": llm.available(),
         "model": llm.current_model(),
+        "commit": _commit(),
         "time": datetime.now().isoformat(timespec="seconds"),
     }
 
