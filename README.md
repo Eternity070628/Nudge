@@ -92,6 +92,7 @@ nudge/
 | POST | /api/feedback | 三键反馈（有用/无关/时间错） |
 | GET | /api/settings | 读取模型接入地址/模型/是否已保存 Key |
 | POST | /api/settings | 保存接入地址、模型、API Key（Key 不回显） |
+| POST | /api/deploy | CI 钩子：git pull + 重载（需 `NUDGE_DEPLOY_TOKEN`，未配置时不存在） |
 
 ## 6. 模型接入
 
@@ -102,7 +103,15 @@ nudge/
 
 没有 Key 时自动回退纯规则，页面状态显示「规则模式」。填写后 `/api/health` 的 `llm` 变为 `true`，抽取走「规则 + 模型补充」，模型输出仍要过 `verifier` 的逐字证据校验。Key 只保存在本机 `backend/data/nudge.db`（已 gitignore），不会进入 release 源码包；这是单机演示的本地明文存储，生产环境应改用密钥管理服务。
 
-## 7. 已知限制
+## 7. 线上部署
+
+已按 PythonAnywhere 免费计划设计：GitHub push → Actions → PA 上的 `/api/deploy` 自己拉代码并重载，不需要 SSH，也不需要常驻任务。
+
+- 部署步骤、Secrets 配置、免费版限制、排错：[`docs/deploy-pythonanywhere.md`](docs/deploy-pythonanywhere.md)
+- 手动兜底：PA 上执行 `bash ~/nudge/pythonanywhere/deploy.sh`
+- 免费版出网白名单不含 DeepSeek，线上默认走规则引擎（`NUDGE_DISABLE_LLM=1`），这是设计内的降级
+
+## 8. 已知限制
 
 - 截图 OCR 依赖外部 OCR 服务，当前 Demo 只做文本入口（接口已预留 source_type=image）。
 - 用户画像目前是写死的示例用户，接学校统一身份后应改为登录态。

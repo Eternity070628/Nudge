@@ -4,10 +4,15 @@
 """
 from __future__ import annotations
 
+import hmac
+import os
+import subprocess
+import sys
+import threading
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -194,6 +199,47 @@ def api_seed(user_id: str = "u_demo") -> dict[str, Any]:
         _, created = db.save_event(draft, user_id, rel, reasons)
         added += 1 if created else 0
     return {"ok": True, "added": added, "total": len(SAMPLES)}
+
+
+# ---- 部署钩子：GitHub Actions 推送后调用，拉代码 + 装依赖 + 重载 ----
+DEPLOY_TOKEN = os.getenv("NUDGE_DEPLOY_TOKEN", "").strip()
+REPO_DIR = BASE_DIR.parent
+
+
+@app.post("/api/deploy")
+def api_deploy(x_deploy_token: str = Header(""), token: str = Query("")) -> dict[str, Any]:
+    """CI 用：万一失败要能在日志里看到原始报错，所以不用 shell，逐条 git 执行。"""
+    if not DEPLOY_TOKEN:
+        raise HTTPException(404, "deploy disabled")
+    if not hmac.compare_digest(x_deploy_token or token, DEPLOY_TOKEN):
+        raise HTTPException(403, "bad deploy token")
+    if not (REPO_DIR / ".git").exists():
+        raise HTTPException(400, "not a git checkout")
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(["git", *args], cwd=REPO_DIR, capture_output=True, text=True, timeout=120)
+
+    before = git("rev-parse", "--short", "HEAD").stdout.strip()
+    for args in (("fetch", "--depth=1", "origin", "main"), ("reset", "--hard", "origin/main")):
+        done = git(*args)
+        if done.returncode != 0:
+            detail = (done.stderr or done.stdout).strip()[-300:]
+            raise HTTPException(500, "git " + " ".join(args) + " 失败: " + detail)
+    after = git("rev-parse", "--short", "HEAD").stdout.strip()
+
+    pip_note = "skipped"
+    req = REPO_DIR / "pythonanywhere" / "requirements.txt"
+    if req.exists() and os.getenv("NUDGE_DEPLOY_PIP", "1") != "0":
+        install = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(req)],
+                                 cwd=REPO_DIR, capture_output=True, text=True, timeout=300)
+        pip_note = "ok" if install.returncode == 0 else (install.stderr or install.stdout).strip()[-200:]
+
+    wsgi = REPO_DIR / "pythonanywhere" / "wsgi.py"
+    if wsgi.exists():
+        threading.Timer(1.5, lambda: os.utime(wsgi, None)).start()
+
+    return {"ok": True, "before": before, "after": after, "pip": pip_note,
+            "reload": "scheduled" if wsgi.exists() else "no wsgi"}
 
 
 @app.get("/")

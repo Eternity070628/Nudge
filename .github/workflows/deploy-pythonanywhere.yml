@@ -1,0 +1,28 @@
+name: deploy-pythonanywhere
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pythonanywhere
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call PythonAnywhere deploy hook
+        env:
+          PA_DEPLOY_URL: ${{ secrets.PA_DEPLOY_URL }}
+          PA_DEPLOY_TOKEN: ${{ secrets.PA_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$PA_DEPLOY_URL" ]; then
+            echo "PA_DEPLOY_URL 未配置，跳过部署"
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/deploy.json -w "%{http_code}" -X POST "$PA_DEPLOY_URL" -H "X-Deploy-Token: $PA_DEPLOY_TOKEN")
+          echo "HTTP $code"
+          cat /tmp/deploy.json || true
+          test "$code" = "200"

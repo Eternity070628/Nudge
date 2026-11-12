@@ -6,11 +6,14 @@ Key 优先级：页面设置（SQLite）> 环境变量 MAAS_API_KEY。
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 
 from .. import config, db
 
-_disabled = False
+# 部署在受限网络（如 PythonAnywhere 免费帐号）时可强制走规则引擎
+off = os.getenv("NUDGE_DISABLE_LLM", "").strip().lower()
+_disabled = off in ("1", "true", "yes", "on")
 
 
 def current() -> tuple[str, str, str]:
