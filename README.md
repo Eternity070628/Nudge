@@ -109,10 +109,10 @@ nudge/
 
 线上运行地址：**https://eternity0628.pythonanywhere.com** （PythonAnywhere 免费计划）
 
-链路：GitHub push → Actions → PA 上的 `/api/deploy` 自己 `git reset --hard origin/main`、装依赖、调 PA API 重载进程，不需要 SSH，也不需要常驻任务。
+链路：GitHub push → Actions → PA 上的 `/api/deploy` 自己 `git reset --hard origin/main`（依赖只在 `requirements.txt` 变化时安装），uvicorn 的 `--reload` 监听到文件变化后自动重启 worker，不需要 SSH，也不需要常驻任务。
 
 - 完整步骤、Secrets 配置、免费版限制、排错：[`docs/deploy-pythonanywhere.md`](docs/deploy-pythonanywhere.md)
-- 形态说明：PA 免费帐号只能有 1 个 web app，本帐号是 **custom command** 类型（Command 字段只读），所以由 `~/start_opc.sh` 用 `uvicorn --uds "$DOMAIN_SOCKET"` 拉起 Nudge；重载必须走 `PA_API_TOKEN`
+- 形态说明：PA 免费帐号只能有 1 个 web app，本帐号是 **custom command** 类型（Command 字段只读），所以由 `~/start_opc.sh` 用 `uvicorn --uds "$DOMAIN_SOCKET" --reload --reload-dir backend` 拉起 Nudge；免费账号的 reload API 返回 403，重载靠 uvicorn 的 reloader
 - 手动兜底：PA 上执行 `bash ~/nudge/pythonanywhere/deploy.sh`
 - 免费版出网白名单不含 DeepSeek，线上默认走规则引擎（`NUDGE_DISABLE_LLM=1`），这是设计内的降级（`/api/health` 返回 `llm:false`）
 

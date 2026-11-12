@@ -10,11 +10,14 @@ git push main
         └─ POST https://<用户名>.pythonanywhere.com/api/deploy   (X-Deploy-Token)
              ├─ git fetch --depth=1 + reset --hard origin/main
              ├─ pip install -r pythonanywhere/requirements.txt
-             └─ 调 PythonAnywhere API 重载 web app（或 touch wsgi.py）
+             └─ uvicorn --reload 监听到文件变化，自动重启 worker
 ```
 
 为什么是这条链路：PythonAnywhere 免费帐号没有常驻任务，也不保证能开 SSH，但它**允许出网访问 github.com 和 api.pythonanywhere.com**。
-所以让 PA 自己拉代码、自己触发重载，是免费方案里最稳的一种，也顺便成为答辩里「自动部署」的证据。
+所以让 PA 自己拉代码，是免费方案里最稳的一种，也顺便成为答辩里「自动部署」的证据。
+
+重载怎么来的：启动命令带 `--reload --reload-dir backend`，`git reset --hard` 改写文件后 uvicorn 自己重启 worker。
+（试过 PythonAnywhere 的 web app reload API，免费账号的 custom-command 应用返回 `403 You do not have permission to perform this action.`，于是放弃了那条路。）
 
 ## 一、实际采用的形态：custom-command + uvicorn --uds
 
@@ -40,7 +43,6 @@ git push main
    export NUDGE_DEPLOY_TOKEN="<随机长 token>"
    export PA_USERNAME="<用户名>"
    export PA_DOMAIN="<用户名>.pythonanywhere.com"
-   export PA_API_TOKEN="<PythonAnywhere 账号的 API token>"
    cd "$HOME/nudge"
    exec "$HOME/.virtualenvs/nudge/bin/uvicorn" --app-dir "$HOME/nudge/backend" --uds "$DOMAIN_SOCKET" app.main:app
    EOF
@@ -49,7 +51,7 @@ git push main
 
    要点：
    - **必须监听 `$DOMAIN_SOCKET`**（PA 注入的环境变量），不能自己挑端口；
-   - `PA_USERNAME / PA_DOMAIN / PA_API_TOKEN` 三个齐了，`/api/deploy` 才会调 PA API 重载进程——custom-command 形态下 `touch wsgi.py` **不会**触发重载；
+   - 必须带 `--reload --reload-dir "$HOME/nudge/backend"`：custom-command 应用没有 WSGI 文件，也没有可用的 reload API，改动后的重启只能靠 uvicorn 自己的 reloader；
    - 同名的 `~/start_nudge.sh` 内容相同，留作换 app 或本地调试用。
 
 3. Web 页点绿色 **Reload**，然后验证：
@@ -81,7 +83,7 @@ git push main
 之后每次 push 到 `main`，Actions 里的 `deploy-pythonanywhere` 会跑，日志里能看到 `HTTP 200` 与：
 
 ```json
-{"ok":true,"before":"69f93d1","after":"<新提交>","pip":"skipped","reload":"pythonanywhere-api"}
+{"ok":true,"before":"c4a678a","after":"cbfcaf1","pip":"skipped","reload":"uvicorn-reload"}
 ```
 
 验证方式：改 README 一个字 → push → 等 30 秒 → 刷新页面。也可以在 Actions 页面点 **Run workflow** 手动触发。
@@ -120,7 +122,8 @@ bash ~/nudge/pythonanywhere/deploy.sh
 
 - **一直转圈 / 502**：看 Web 页的 error log（`/var/log/<用户名>.pythonanywhere.com.error.log`），最常见是 `$DOMAIN_SOCKET` 没被透传、venv 里缺依赖、`app-dir` 写错。
 - **`/api/deploy` 返回 403**：token 不一致（启动脚本里的 vs GitHub secret）。
-- **`/api/deploy` 返回 200 但页面没变**：看返回里的 `reload` 字段——如果是 `none` 或 `wsgi-touch`，说明 `PA_USERNAME/PA_DOMAIN/PA_API_TOKEN` 没配齐，custom-command 形态下必须走 API 重载。
+- **`/api/deploy` 返回 200 但页面没变**：确认启动命令里还有 `--reload`；再看 `https://<用户名>.pythonanywhere.com/api/health` 的 `commit` 字段是不是最新提交。reload 之后 worker 重启要 2–5 秒，别立刻刷新。
+- **reload 之后整站 502**：多半是 `--reload-dir` 指到了不存在或被 git 删掉的目录，看 error log 里 uvicorn 的启动行。
 - **`/api/deploy` 返回 500 且 git 报 `could not read Username`**：仓库不是公开的，或远端地址写错；公开仓库拉取不需要凭据。
 - **页面 404 但 `/api/health` 正常**：静态目录被 PA 的 Static files 映射覆盖，检查映射路径（本项目由 FastAPI 自己托管静态文件，不需要单独映射）。
 - **改了代码但页面没变**：看 Actions 日志；再确认响应里的 `after` 是不是最新 commit。
@@ -137,7 +140,7 @@ application = runpy.run_path("/home/<用户名>/nudge/pythonanywhere/wsgi.py")["
 ```
 
 `pythonanywhere/wsgi.py` 会用 `a2wsgi.ASGIMiddleware` 包住 FastAPI app，并默认 `NUDGE_DATA=backend/data`、`NUDGE_DISABLE_LLM=1`。
-这种形态下重载靠 `touch wsgi.py` 即可，不需要 `PA_API_TOKEN`。
+这种形态下 mod_wsgi 会自己感知 WSGI 文件的变化，不需要 reloader。
 
 ## 七、和评审的关系
 
