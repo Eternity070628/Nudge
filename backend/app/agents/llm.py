@@ -165,9 +165,9 @@ def probe(kind: str = "chat", timeout: int = 30) -> dict[str, Any]:
         payload = {
             "model": model,
             "temperature": 0.0,
-            "max_tokens": 32,
+            "max_tokens": 64,
             "messages": [
-                {"role": "system", "content": "只回答一个字：好"},
+                {"role": "system", "content": "只输出一个汉字：好。不要思考过程，不要解释。"},
                 {"role": "user", "content": "ping"},
             ],
         }
