@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import threading
+import urllib.request
 from datetime import date, datetime
 from typing import Any
 
@@ -236,12 +237,36 @@ def api_deploy(x_deploy_token: str = Header(""), token: str = Query("")) -> dict
                                  encoding="utf-8", errors="replace", timeout=300)
         pip_note = "ok" if install.returncode == 0 else (install.stderr or install.stdout).strip()[-200:]
 
+    # 重载：PythonAnywhere 的 custom-command 应用没有 WSGI 文件，只能调 API 重启进程；
+    # 普通 mod_wsgi 部署则 touch 一下 wsgi.py 即可。
+    pa_user = os.getenv("PA_USERNAME", "").strip()
+    pa_domain = os.getenv("PA_DOMAIN", "").strip()
+    pa_token = os.getenv("PA_API_TOKEN", "").strip()
     wsgi = REPO_DIR / "pythonanywhere" / "wsgi.py"
-    if wsgi.exists():
+
+    if pa_user and pa_domain and pa_token:
+        def hit_api() -> None:
+            try:
+                req = urllib.request.Request(
+                    "https://www.pythonanywhere.com/api/v0/user/" + pa_user
+                    + "/webapps/" + pa_domain + "/reload/",
+                    data=b"", method="POST",
+                    headers={"Authorization": "Token " + pa_token},
+                )
+                urllib.request.urlopen(req, timeout=20).read()
+            except Exception:
+                pass
+
+        threading.Timer(1.0, hit_api).start()
+        reload_mode = "pythonanywhere-api"
+    elif wsgi.exists():
         threading.Timer(1.5, lambda: os.utime(wsgi, None)).start()
+        reload_mode = "wsgi-touch"
+    else:
+        reload_mode = "none"
 
     return {"ok": True, "before": before, "after": after, "pip": pip_note,
-            "reload": "scheduled" if wsgi.exists() else "no wsgi"}
+            "reload": reload_mode}
 
 
 @app.get("/")
