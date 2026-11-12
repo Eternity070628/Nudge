@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nudge · 校园截止管家</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="glow g1"></div><div class="glow g2"></div>
+
+<header class="top">
+  <div class="brand">
+    <div class="mark">N</div>
+    <div>
+      <h1>Nudge <span class="cn">校园截止管家</span></h1>
+      <p class="slogan">Not an alarm. A nudge.</p>
+    </div>
+  </div>
+  <div class="engine" id="engine">检测引擎中…</div>
+</header>
+
+<main class="layout">
+  <section class="panel intake">
+    <div class="panel-head">
+      <h2>① 粘贴一条通知</h2>
+      <span class="hint">群里转发的、教务系统的、截图 OCR 的都行</span>
+    </div>
+    <textarea id="notice" spellcheck="false" placeholder="例如：关于举办2026年“挑战杯”校内选拔赛的通知……&#10;报名截止时间：2026年11月14日 23:59&#10;提交材料：1. 申报书 2. 说明书 3. 推荐意见"></textarea>
+    <div class="chips" id="samples"></div>
+    <div class="actions">
+      <button class="btn primary" id="extract">抽取为事件</button>
+      <button class="btn ghost" id="seed">载入示例数据</button>
+    </div>
+    <div id="draft" class="draft hidden"></div>
+    <div class="flow">
+      <div class="step"><i>1</i><div><b>抽取</b><span>一段人话 → 结构化事件：标题、截止、对象、材料、提交方式</span></div></div>
+      <div class="step"><i>2</i><div><b>校对</b><span>每个字段都要在原文里找到证据，找不到就标「需确认」，绝不编造</span></div></div>
+      <div class="step"><i>3</i><div><b>匹配</b><span>按年级、院系、兴趣算相关度，跟你无关的直接沉底</span></div></div>
+      <div class="step"><i>4</i><div><b>编排</b><span>材料清单、D-7/D-3/D-1 提醒、同日撞车与负载预警</span></div></div>
+    </div>
+  </section>
+
+  <section class="panel board">
+    <div class="panel-head">
+      <h2>② 你真正要做什么</h2>
+      <span class="hint" id="board-hint"></span>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div id="conflict"></div>
+    <div class="list-head"><span>按截止时间排序</span><span id="list-count"></span></div>
+    <div id="events" class="events"></div>
+    <div class="brief" id="brief"></div>
+    <div class="foot">
+      <a id="ics" class="ics" href="#" target="_blank">＋ 订阅到手机日历（.ics）</a>
+      <span class="tiny">订阅一次，之后所有截止自动同步</span>
+    </div>
+  </section>
+</main>
+
+<footer class="bottom">
+  <span>Nudge MVP · FastAPI + SQLite · 抽取 → 校验 → 匹配 → 编排</span>
+  <span id="llm-note"></span>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
