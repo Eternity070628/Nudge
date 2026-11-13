@@ -75,7 +75,7 @@ body{
 .g1{width:560px;height:560px;background:var(--glow1);top:-220px;left:-120px}
 .g2{width:520px;height:520px;background:var(--glow2);bottom:-240px;right:-140px}
 
-.top{position:relative;z-index:2;display:flex;justify-content:space-between;align-items:center;
+.top{position:relative;z-index:20;display:flex;justify-content:space-between;align-items:center;
   padding:28px 44px 10px;max-width:1400px;margin:0 auto;gap:20px}
 .brand{display:flex;gap:16px;align-items:center}
 .mark{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-weight:800;font-size:22px;
@@ -93,7 +93,7 @@ body{
 .theme-trigger:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 .chevron{font-size:11px;line-height:1;transition:transform .15s}
 .theme-trigger[aria-expanded="true"] .chevron{transform:rotate(180deg)}
-.theme-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:30;min-width:140px;padding:6px;
+.theme-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:40;min-width:140px;padding:6px;
   border:1px solid var(--menu-border);border-radius:12px;background:var(--menu-bg);box-shadow:var(--menu-shadow)}
 .theme-menu[hidden]{display:none}
 .theme-option{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
