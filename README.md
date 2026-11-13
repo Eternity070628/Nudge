@@ -150,6 +150,17 @@ SMTP_SENDER=2025212080@bupt.cn
 - `GET /api/auth/mail-status` 的 `mode` 会变成 `smtp`，登录页文案同步变成「通过邮箱 SMTP 真实发出」。
 - `smtp.bupt.cn` 也能连，但它复用腾讯的证书、主机名对不上，严格校验会被拒；直接写标准主机名 `smtp.exmail.qq.com`。
 
+### 6.1.2 部署在 PythonAnywhere 时怎么发信
+
+PythonAnywhere 免费账号**禁止出站 SMTP**：本机明明能发出的 `smtp.exmail.qq.com:465/587`，到了 PA 上直接 `Network is unreachable`（`smtp.pythonanywhere.com` 的 25/465/587 也是 connection refused）。所以线上只有两条真发信路：
+
+- **Microsoft Graph（推荐，走 443）**：`python -m app.services.mailer auth` 换到 refresh token 后，把 `GRAPH_REFRESH_TOKEN` 放进线上 `.env`，`MAIL_TRANSPORT=graph`。
+- **HTTPS 邮件 API**（Brevo 等）：同样只走 443，不受端口限制。
+
+在拿到以上凭据之前，线上把 `NUDGE_EMAIL_DEV=1` 打开即可正常注册——验证码显示在页面上并明确标注「开发模式：未真实发信」，不会假装发送成功。
+
+线上改配置的方式：仓库根目录放一份 `.env`（它已在 `.gitignore` 里，`git pull` 不会覆盖它），改完在 PythonAnywhere 的 Web 页面点一次 Reload。可以用 `GET /api/auth/mail-status` 确认线上当前是 `dev` 还是真发信。
+
 ![登录页发信状态](docs/login-mail-status.png)
 
 保留 `u_demo` 公开演示账号，登录页有「进入公开演示账号」；新注册用户从空看板开始。登录态使用 HttpOnly Cookie session；密码只存 PBKDF2 哈希。
