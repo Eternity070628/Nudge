@@ -36,8 +36,8 @@ flowchart LR
 
 | Agent | 输入 → 输出 | 关键设计 |
 |---|---|---|
-| **Extractor** | 通知原文 → 事件 JSON | 规则优先（快、离线、可解释），LLM 只做补充；**每个字段必须回填原文证据** |
-| **Verifier** | 事件 JSON + 原文 → 置信度 | 逐字段比对证据；证据不在原文里，该字段置信度直接降到 0.3 并标「需确认」 |
+| **Extractor** | 通知原文 → 事件 JSON | 规则优先（快、离线、可解释），LLM 只做补充；**每个字段必须回填原文证据**；校区按「本部 / 西土城 → 海淀，昌平 → 沙河」识别 |
+| **Verifier** | 事件 JSON + 原文 → 置信度 | 逐字段比对证据；证据不在原文里，该字段置信度直接降到 0.3 并标「需确认」；保留上游写入的校区冲突提示 |
 | **Matcher** | 事件 + 用户画像 → 相关度 | 年级/院系/兴趣加权，无关的沉底，避免「通知洪水」 |
 | **Planner** | 事件 → 计划 | 材料 checklist、D-7/D-3/D-1 提醒、同日 ≥2 件撞车预警、周报 |
 
@@ -95,9 +95,13 @@ nudge/
 | GET | /api/dashboard | 统计、撞车预警、周报 |
 | GET | /api/calendar/{token}.ics | 日历订阅（含 VALARM 提前 1 天） |
 | POST | /api/feedback | 三键反馈（有用/无关/时间错） |
-| GET | /api/settings | 读取模型接入地址/模型/是否已保存 Key |
-| POST | /api/settings | 保存接入地址、模型、API Key（Key 不回显；存了 Key 自动切 `model` 模式） |
+| GET | /api/settings | 读取模型接入、当前邮箱、默认校区与是否只读 |
+| POST | /api/settings | 保存接入地址、模型、API Key、默认校区（Key 不回显；存了 Key 自动切 `model` 模式） |
+| POST | /api/settings/code | 修改邮箱/密码时发送验证码（原邮箱 / 新邮箱 / 密码用途） |
+| POST | /api/settings/email | 原邮箱验证码 + 新邮箱验证码，双重校验后更换邮箱 |
+| POST | /api/settings/password | 原密码或邮箱验证码二选一，修改密码 |
 | GET | /api/llm-test?kind=chat\|models | 真发一次最小请求，返回状态码/报错原文，用来排查 Key 与模型名 |
+| GET | /api/admin/users/detail?ids=a,b | 管理端并排查看多个用户的事件与模型配置 |
 | POST | /api/deploy | CI 钩子：git pull + 重载（需 `NUDGE_DEPLOY_TOKEN`，未配置时不存在） |
 
 ## 6. 模型接入
@@ -105,15 +109,17 @@ nudge/
 默认配置指向 DeepSeek：
 - 接入地址：`https://api.deepseek.com`
 - 模型：`deepseek-flash`（`/v1/models` 实际返回的可用 id；早期 `deepseek-v4.1-flash` 不被接口接受）
-- API Key：不写进仓库。首次使用点页面右上角「模型设置」填写；也可以设置环境变量 `MAAS_API_KEY`。
+- API Key：不写进仓库。首次使用点页面右上角「设置 → 模型接入」填写；也可以设置环境变量 `MAAS_API_KEY`。
 
 没有 Key 时自动回退纯规则，页面状态显示「规则模式」。填写后 `/api/health` 的 `llm` 变为 `true`，抽取走「规则 + 模型补充」，模型输出仍要过 `verifier` 的逐字证据校验。Key 只保存在本机 `backend/data/nudge.db`（已 gitignore），不会进入 release 源码包；这是单机演示的本地明文存储，生产环境应改用密钥管理服务。
 
-每个用户在右上角「模型设置」里保存自己的接入地址、模型和 Key，互不覆盖；管理员在用户详情里可以查看对应用户的接入地址、模型和「是否已配置 Key」，但不显示 Key 内容。
+每个用户在右上角「设置 → 模型接入」里保存自己的接入地址、模型和 Key，互不覆盖；管理员在用户详情里可以查看对应用户的接入地址、模型和「是否已配置 Key」，但不显示 Key 内容。
 
 ## 6.1 登录与多用户
 
 进入站点先登录。支持邮箱+密码登录、昵称/邮箱/密码/验证码注册、邮箱验证码重置密码；密码框可切换明文查看。登录成功后跳转到独立的 `/app` 或 `/admin` 页面，不和登录表单共用一个滚动页；管理员邮箱登录自动进入管理端，可查看和删除用户；删除用户会清理其事件、反馈和会话。
+
+右上角「设置」统一管理默认校区、账号邮箱、登录密码与模型接入。修改邮箱需要原邮箱验证码 + 新邮箱验证码双重校验；修改密码可以用原密码，也可以走邮箱验证码，二选一。管理员设置里不含校区，其余一致。公开演示账号 `u_demo` 能看到全部设置项，但所有写操作都被前端禁用、后端返回 403。
 
 ### 6.1.1 线上真发信：Brevo（走 443，免费额度 300 封/天）
 
@@ -148,7 +154,7 @@ NUDGE_EMAIL_DEV=0
 
 ## 7. 主题
 
-右上角「跟随系统 / 浅色 / 深色」三档；选择存浏览器 `localStorage`，刷新后保留。颜色走 `:root` 深色变量与 `[data-theme="light"]` 浅色变量；跟随系统时用 `prefers-color-scheme`，不需要刷新。下拉菜单也使用同一组主题变量，深色下不会出现系统默认白底菜单。
+右上角「跟随系统 / 浅色 / 深色」三档，登录页、用户端和管理端都能切换；选择存浏览器 `localStorage`，刷新后保留。颜色走 `:root` 深色变量与 `[data-theme="light"]` 浅色变量；跟随系统时用 `prefers-color-scheme`，不需要刷新。下拉菜单也使用同一组主题变量，深色下不会出现系统默认白底菜单。
 
 ## 8. 线上部署
 
@@ -159,7 +165,7 @@ NUDGE_EMAIL_DEV=0
 - 完整步骤、Secrets 配置、免费版限制、排错：[`docs/deploy-pythonanywhere.md`](docs/deploy-pythonanywhere.md)
 - 形态说明：PA 免费帐号只能有 1 个 web app，本帐号是 **custom command** 类型（Command 字段只读），所以由 `~/start_opc.sh` 用 `uvicorn --uds "$DOMAIN_SOCKET" --reload --reload-dir backend` 拉起 Nudge；免费账号的 reload API 返回 403，重载靠 uvicorn 的 reloader
 - 手动兜底：PA 上执行 `bash ~/nudge/pythonanywhere/deploy.sh`
-- 线上是 PythonAnywhere 免费帐号。启动脚本里 `NUDGE_DISABLE_LLM=1` 只是「还没配 Key 时的保守默认」；页面「模型设置」存了 Key 就以页面为准（`llm_mode=model`），`/api/health` 的 `llm` 变 `true`。实测 `api.deepseek.com` 在 PA 可出网（返回 401 = 连通），`api.modelarts-maas.com` 会被 403 拦
+- 线上是 PythonAnywhere 免费帐号。启动脚本里 `NUDGE_DISABLE_LLM=1` 只是「还没配 Key 时的保守默认」；页面「设置 → 模型接入」存了 Key 就以页面为准（`llm_mode=model`），`/api/health` 的 `llm` 变 `true`。实测 `api.deepseek.com` 在 PA 可出网（返回 401 = 连通），`api.modelarts-maas.com` 会被 403 拦
 - 排查模型问题优先用 `GET /api/llm-test?kind=models`：能拿到模型列表说明 Key 与地址都对，只剩模型名要换
 
 ## 9. 已知限制
@@ -168,7 +174,7 @@ NUDGE_EMAIL_DEV=0
 - **真实发信依赖外部配置**：验证码支持 Microsoft Graph / SMTP / Brevo 三条通道，由 `MAIL_TRANSPORT` 选择；没有凭据时进入开发模式，验证码只在页面/日志显示，不会假装发送成功。真实投递还受发件地址验证、免费额度、代理和校园网出站限制影响。
 - **验证码只做了基本节流**：同一邮箱 + 用途 60 秒内不能重发，验证码 10 分钟有效且一次性使用；连续输错没有单独的失败次数锁定。
 - **登录安全边界**：密码以 PBKDF2 哈希保存，登录态用 HttpOnly Cookie session；当前没有学校统一身份/SSO、登录失败锁定或二次验证。
-- **管理端只做用户列表和删除**：删除会连带清理该用户的事件关联、反馈、会话和验证码；没有禁用/启用、角色分配、管理员重置密码；内置 `u_admin`、`u_demo` 不可删除。
+- **管理端做用户列表、并排对比和删除**：可勾选多个用户同时查看事件与模型配置；删除会连带清理该用户的事件关联、反馈、会话和验证码；没有禁用/启用、角色分配、管理员重置密码；内置 `u_admin`、`u_demo` 不可删除。
 - **演示账号是公开的**：`u_demo` 通过「进入公开演示账号」免密进入，示例数据共享；它只用于演示，不能当真实学生账号。
 - **大模型是可选补充**：默认 DeepSeek `deepseek-flash`；没有 Key 或调用失败自动回退规则抽取。评测脚本强制规则模式，20/20 是当前自建 20 条评测集的结果，不是生产准确率。
 - **单机 SQLite**：没有多实例、任务队列、备份和审计日志；数据恢复依赖 `backend/data/*.db` 本地文件。

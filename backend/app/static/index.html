@@ -23,6 +23,17 @@
 <div class="glow g1"></div><div class="glow g2"></div>
 
 <section id="auth-screen" class="auth-screen">
+  <div class="theme-picker auth-theme" data-theme-picker>
+    <button class="theme-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="主题">
+      <span class="theme-label">跟随系统</span>
+      <span class="chevron" aria-hidden="true">▾</span>
+    </button>
+    <div class="theme-menu" role="listbox" aria-label="主题" hidden>
+      <button class="theme-option" type="button" role="option" data-theme="system">跟随系统</button>
+      <button class="theme-option" type="button" role="option" data-theme="light">浅色</button>
+      <button class="theme-option" type="button" role="option" data-theme="dark">深色</button>
+    </div>
+  </div>
   <div class="auth-card">
     <div class="auth-brand">
       <div class="mark">N</div>
@@ -87,20 +98,20 @@
     </div>
   </div>
   <div class="top-right">
-    <div class="theme-picker" id="theme-picker">
-      <button class="theme-trigger" id="theme-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="主题">
-        <span id="theme-label">跟随系统</span>
+    <div class="theme-picker" data-theme-picker>
+      <button class="theme-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="主题">
+        <span class="theme-label">跟随系统</span>
         <span class="chevron" aria-hidden="true">▾</span>
       </button>
-      <div class="theme-menu" id="theme-menu" role="listbox" aria-label="主题" hidden>
-        <button class="theme-option" type="button" role="option" data-theme="system" aria-selected="true">跟随系统</button>
-        <button class="theme-option" type="button" role="option" data-theme="light" aria-selected="false">浅色</button>
-        <button class="theme-option" type="button" role="option" data-theme="dark" aria-selected="false">深色</button>
+      <div class="theme-menu" role="listbox" aria-label="主题" hidden>
+        <button class="theme-option" type="button" role="option" data-theme="system">跟随系统</button>
+        <button class="theme-option" type="button" role="option" data-theme="light">浅色</button>
+        <button class="theme-option" type="button" role="option" data-theme="dark">深色</button>
       </div>
     </div>
     <span class="user-chip" id="user-name"></span>
     <button class="btn ghost btn-mini hidden" id="admin-btn" type="button">管理端</button>
-    <button class="btn ghost btn-mini" id="settings-btn" type="button">模型设置</button>
+    <button class="btn ghost btn-mini" id="settings-btn" type="button">设置</button>
     <div class="engine" id="engine">检测引擎中…</div>
     <button class="btn ghost btn-mini" id="logout-btn" type="button">退出</button>
   </div>
@@ -113,7 +124,6 @@
       <span class="hint">群里转发的、教务系统的、截图 OCR 的都行</span>
     </div>
     <textarea id="notice" spellcheck="false" placeholder="例如：关于举办2026年“挑战杯”校内选拔赛的通知……&#10;报名截止时间：2026年11月14日 23:59&#10;提交材料：1. 申报书 2. 说明书 3. 推荐意见"></textarea>
-    <div class="chips" id="samples"></div>
     <div class="actions">
       <button class="btn primary" id="extract">抽取为事件</button>
       <button class="btn ghost" id="seed">载入示例数据</button>
@@ -124,6 +134,40 @@
       <div class="step"><i>2</i><div><b>校对</b><span>每个字段都要在原文里找到证据，找不到就标「需确认」，绝不编造</span></div></div>
       <div class="step"><i>3</i><div><b>匹配</b><span>按年级、院系、兴趣算相关度，跟你无关的直接沉底</span></div></div>
       <div class="step"><i>4</i><div><b>编排</b><span>材料清单、D-7/D-3/D-1 提醒、同日撞车与负载预警</span></div></div>
+    </div>
+    <div class="runbook" id="runbook">
+      <div class="runbook-head">
+        <b>Agent 运行细则</b>
+        <span class="hint" id="runbook-state">待命</span>
+      </div>
+      <div class="agent-step" data-agent="extractor" data-state="idle">
+        <div class="agent-dot"></div>
+        <div class="agent-body">
+          <div class="agent-title">抽取 Agent<span class="agent-state">待命</span></div>
+          <p>首行作标题；按「截止 / 即日起至 / 请于」等句式找日期，缺时刻默认 23:59；材料按编号拆；提交方式识别邮箱、链接与线下地点。校区：本部 / 西土城 → 海淀，昌平 → 沙河。</p>
+        </div>
+      </div>
+      <div class="agent-step" data-agent="verifier" data-state="idle">
+        <div class="agent-dot"></div>
+        <div class="agent-body">
+          <div class="agent-title">校验 Agent<span class="agent-state">待命</span></div>
+          <p>每个字段回原文找证据；定位不到就降级为「需确认」，绝不编造。相对时间或缺少具体时刻会提醒核对。</p>
+        </div>
+      </div>
+      <div class="agent-step" data-agent="matcher" data-state="idle">
+        <div class="agent-dot"></div>
+        <div class="agent-body">
+          <div class="agent-title">匹配 Agent<span class="agent-state">待命</span></div>
+          <p>按年级、院系、兴趣加权计算相关度，跟你无关的通知会自动沉底。</p>
+        </div>
+      </div>
+      <div class="agent-step" data-agent="planner" data-state="idle">
+        <div class="agent-dot"></div>
+        <div class="agent-body">
+          <div class="agent-title">编排 Agent<span class="agent-state">待命</span></div>
+          <p>把通知拆成材料清单，排 D-7 / D-3 / D-1 提醒，并标出同日撞车与负载过高的日期。</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -144,33 +188,98 @@
   </section>
 </main>
 
-<dialog id="settings-dialog" class="settings-dialog">
-  <form id="settings-form">
-    <h3>模型接入</h3>
-    <p class="hint">默认指向 DeepSeek。API Key 只保存在本机数据库，不写入代码仓库。</p>
-    <label>接入地址
-      <input id="setting-base" placeholder="https://api.deepseek.com" autocomplete="off" />
-    </label>
-    <label>模型名
-      <input id="setting-model" placeholder="deepseek-flash" autocomplete="off" />
-    </label>
-    <label>API Key
-      <input id="setting-key" type="password" placeholder="留空则保留已保存的 Key" autocomplete="off" />
-    </label>
-    <p class="hint" id="setting-status"></p>
-    <div class="actions">
-      <button class="btn primary" type="submit" id="setting-save">保存</button>
-      <button class="btn ghost" type="button" id="setting-test">测试连接</button>
-      <button class="btn ghost" type="button" id="setting-cancel">取消</button>
-    </div>
-  </form>
-</dialog>
-
 <footer class="bottom">
   <span>Nudge MVP · FastAPI + SQLite · 抽取 → 校验 → 匹配 → 编排</span>
   <span id="llm-note"></span>
 </footer>
 </div>
+
+<dialog id="settings-dialog" class="settings-dialog">
+  <form id="settings-form">
+    <div class="settings-head">
+      <h3>设置</h3>
+      <button class="btn ghost btn-mini" type="button" id="setting-close">关闭</button>
+    </div>
+    <p class="hint settings-readonly hidden" id="settings-readonly"></p>
+
+    <section class="settings-section" id="campus-section">
+      <h4>默认校区</h4>
+      <p class="hint">通知里没写校区时按这里判断；通知明确写了校区，则以通知为准。</p>
+      <select id="setting-campus" class="edit-input">
+        <option value="haidian">海淀校区（本部 / 西土城）</option>
+        <option value="shahe">沙河校区（昌平）</option>
+        <option value="hainan">海南校区</option>
+      </select>
+      <div class="actions">
+        <button class="btn ghost btn-mini" type="button" id="setting-campus-save">保存校区</button>
+      </div>
+      <p class="auth-status" id="setting-campus-status"></p>
+    </section>
+
+    <section class="settings-section">
+      <h4>账号邮箱</h4>
+      <p class="settings-line">当前邮箱：<b id="setting-email">—</b></p>
+      <label>原邮箱验证码
+        <span class="code-row"><input id="setting-old-code" inputmode="numeric" maxlength="6" /><button class="btn ghost code-btn" type="button" id="setting-old-send">发送验证码</button></span>
+      </label>
+      <label>新邮箱<input id="setting-new-email" type="email" autocomplete="email" placeholder="new@example.com" /></label>
+      <label>新邮箱验证码
+        <span class="code-row"><input id="setting-new-code" inputmode="numeric" maxlength="6" /><button class="btn ghost code-btn" type="button" id="setting-new-send">发送验证码</button></span>
+      </label>
+      <div class="actions">
+        <button class="btn primary" type="button" id="setting-email-save">更换邮箱</button>
+      </div>
+      <p class="auth-status" id="setting-email-status"></p>
+    </section>
+
+    <section class="settings-section">
+      <h4>修改密码</h4>
+      <div class="seg" id="password-method">
+        <button type="button" class="active" data-method="old">用原密码</button>
+        <button type="button" data-method="code">用邮箱验证码</button>
+      </div>
+      <div id="pw-old-wrap">
+        <label>原密码
+          <span class="pass-row"><input id="setting-old-password" type="password" autocomplete="current-password" /><button type="button" class="show-pass" data-target="setting-old-password">显示</button></span>
+        </label>
+      </div>
+      <div id="pw-code-wrap" class="hidden">
+        <label>邮箱验证码
+          <span class="code-row"><input id="setting-pw-code" inputmode="numeric" maxlength="6" /><button class="btn ghost code-btn" type="button" id="setting-pw-send">发送验证码</button></span>
+        </label>
+      </div>
+      <label>新密码
+        <span class="pass-row"><input id="setting-new-password" type="password" autocomplete="new-password" /><button type="button" class="show-pass" data-target="setting-new-password">显示</button></span>
+      </label>
+      <label>确认新密码
+        <span class="pass-row"><input id="setting-new-confirm" type="password" autocomplete="new-password" /><button type="button" class="show-pass" data-target="setting-new-confirm">显示</button></span>
+      </label>
+      <div class="actions">
+        <button class="btn primary" type="button" id="setting-password-save">修改密码</button>
+      </div>
+      <p class="auth-status" id="setting-password-status"></p>
+    </section>
+
+    <section class="settings-section">
+      <h4>模型接入</h4>
+      <p class="hint">默认指向 DeepSeek。API Key 只保存在本机数据库，不写入代码仓库。</p>
+      <label>接入地址
+        <input id="setting-base" placeholder="https://api.deepseek.com" autocomplete="off" />
+      </label>
+      <label>模型名
+        <input id="setting-model" placeholder="deepseek-flash" autocomplete="off" />
+      </label>
+      <label>API Key
+        <input id="setting-key" type="password" placeholder="留空则保留已保存的 Key" autocomplete="off" />
+      </label>
+      <p class="hint" id="setting-status"></p>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="setting-save">保存</button>
+        <button class="btn ghost" type="button" id="setting-test">测试连接</button>
+      </div>
+    </section>
+  </form>
+</dialog>
 
 <section id="admin-screen" class="admin-screen hidden">
   <header class="top">
@@ -179,7 +288,19 @@
       <div><h1>Nudge <span class="cn">管理端</span></h1><p class="slogan">用户与访问管理</p></div>
     </div>
     <div class="top-right">
+      <div class="theme-picker" data-theme-picker>
+        <button class="theme-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="主题">
+          <span class="theme-label">跟随系统</span>
+          <span class="chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="theme-menu" role="listbox" aria-label="主题" hidden>
+          <button class="theme-option" type="button" role="option" data-theme="system">跟随系统</button>
+          <button class="theme-option" type="button" role="option" data-theme="light">浅色</button>
+          <button class="theme-option" type="button" role="option" data-theme="dark">深色</button>
+        </div>
+      </div>
       <span class="user-chip" id="admin-name"></span>
+      <button class="btn ghost btn-mini" id="admin-settings" type="button">设置</button>
       <button class="btn ghost btn-mini" id="admin-back" type="button">返回看板</button>
       <button class="btn ghost btn-mini" id="admin-logout" type="button">退出</button>
     </div>
@@ -188,7 +309,10 @@
     <section class="panel">
       <div class="panel-head">
         <h2>用户管理</h2>
-        <span class="hint" id="admin-count"></span>
+        <div class="panel-tools">
+          <span class="hint" id="admin-count"></span>
+          <button class="btn ghost btn-mini" id="admin-compare" type="button">对比选中 (0)</button>
+        </div>
       </div>
       <div id="admin-users" class="admin-list"></div>
       <div id="admin-detail" class="admin-detail hidden"></div>

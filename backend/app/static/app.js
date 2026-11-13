@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
-const state = { draft: null, samples: [], payload: null, user: null };
+const state = { draft: null, payload: null, user: null, settings: null, passwordMethod: "old", adminSelected: new Set() };
 const CAT = { competition: "竞赛", scholarship: "奖学金", lecture: "讲座", exam: "考试", affairs: "办事", activity: "活动", other: "其他" };
+const CAMPUS = { haidian: "海淀校区", shahe: "沙河校区", hainan: "海南校区", unknown: "未识别" };
 const URG = { overdue: "已过期", today: "今天截止", urgent: "天内截止", soon: "本周", later: "稍后", unknown: "待确认" };
 
 function el(tag, cls, text) {
@@ -79,6 +80,7 @@ function renderDraft(payload) {
 
   const badges = el("div", "rowline");
   badges.appendChild(el("span", "badge cat", CAT[d.category] || "其他"));
+  badges.appendChild(el("span", "badge", "校区 " + (CAMPUS[d.campus] || CAMPUS.unknown)));
   badges.appendChild(el("span", "badge", "总体可信度 " + Math.round(d.overall_confidence * 100) + "%"));
   if (d.needs_review.length) badges.appendChild(el("span", "badge", "待确认 " + d.needs_review.length + " 项"));
   box.appendChild(badges);
@@ -177,6 +179,43 @@ function renderDraft(payload) {
   box.appendChild(bar);
 }
 
+const AGENTS = ["extractor", "verifier", "matcher", "planner"];
+
+function setAgent(name, stateName, text) {
+  const node = document.querySelector('.agent-step[data-agent="' + name + '"]');
+  if (!node) return;
+  node.dataset.state = stateName;
+  const label = node.querySelector(".agent-state");
+  if (label) label.textContent = text;
+}
+
+function resetRunbook() {
+  AGENTS.forEach((name) => setAgent(name, "idle", "待命"));
+  $("runbook-state").textContent = "待命";
+}
+
+function runbookStart() {
+  AGENTS.forEach((name) => setAgent(name, "running", "处理中"));
+  $("runbook-state").textContent = "四个 Agent 正在处理…";
+}
+
+function runbookDone(payload) {
+  const d = payload.draft;
+  setAgent("extractor", "done",
+    "已抽取 " + (d.title ? "标题" : "标题缺失") + " / " + (d.deadline.end ? "截止" : "截止缺失")
+    + " / " + (d.materials.length ? d.materials.length + " 项材料" : "无材料"));
+  setAgent("verifier", d.needs_review.length ? "warn" : "done",
+    "待确认 " + d.needs_review.length + " 项 · " + d.warnings.length + " 条提醒");
+  setAgent("matcher", "done", "相关度 " + Math.round((payload.relevance || 0) * 100) + "%");
+  setAgent("planner", "done", "生成 " + (payload.checklist || []).length + " 项待办");
+  $("runbook-state").textContent = "本轮运行完成";
+}
+
+function runbookFail(message) {
+  AGENTS.forEach((name) => setAgent(name, "fail", "已停止"));
+  $("runbook-state").textContent = "运行失败：" + message;
+}
+
 async function saveDraft(btn) {
   if (!state.payload) return;
   btn.disabled = true;
@@ -211,12 +250,25 @@ async function loadHealth() {
 async function loadSettings() {
   try {
     const s = await api("/api/settings");
+    state.settings = s;
     $("setting-base").value = s.base_url || "";
     $("setting-model").value = s.model || "";
     $("setting-key").value = "";
+    $("setting-email").textContent = s.email || "未绑定邮箱";
+    $("setting-campus").value = s.campus && s.campus !== "unknown" ? s.campus : "haidian";
     $("setting-status").textContent = s.has_key
       ? "已保存 Key（尾号 " + s.key_hint + "），留空不会覆盖"
       : "尚未保存 Key，当前走规则模式";
+    $("campus-section").classList.toggle("hidden", !!s.is_admin);
+    const readonly = !!s.readonly;
+    $("settings-readonly").classList.toggle("hidden", !readonly);
+    $("settings-readonly").textContent = readonly
+      ? "演示账号为只读模式：可以查看全部设置，但不能修改。注册自己的账号后即可编辑。"
+      : "";
+    document.querySelectorAll("#settings-dialog input, #settings-dialog select, #settings-dialog button").forEach((node) => {
+      if (node.id === "setting-close") return;
+      node.disabled = readonly;
+    });
   } catch (e) {
     $("setting-status").textContent = "读取设置失败：" + e.message;
   }
@@ -245,14 +297,144 @@ async function testConnection() {
   }
 }
 
+function setPasswordMethod(method) {
+  state.passwordMethod = method;
+  document.querySelectorAll("#password-method [data-method]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.method === method);
+  });
+  $("pw-old-wrap").classList.toggle("hidden", method !== "old");
+  $("pw-code-wrap").classList.toggle("hidden", method !== "code");
+}
+
 function openSettings() {
   const dialog = $("settings-dialog");
   if (!dialog.open) dialog.showModal();
+  setPasswordMethod("old");
+  ["setting-campus-status", "setting-email-status", "setting-password-status"].forEach((id) => {
+    setAuthStatus(id, "");
+  });
   loadSettings();
+}
+
+async function sendSettingsCode(target, statusId, button) {
+  if (state.settings && state.settings.readonly) return;
+  const body = { target };
+  if (target === "new") {
+    body.new_email = $("setting-new-email").value.trim();
+    if (!body.new_email) {
+      setAuthStatus(statusId, "请先填写新邮箱", "error");
+      return;
+    }
+  }
+  button.disabled = true;
+  button.textContent = "发送中…";
+  try {
+    const data = await api("/api/settings/code", { method: "POST", body: JSON.stringify(body) });
+    if (data.dev) {
+      const notice = data.notice || "开发模式：未真实发信";
+      setAuthStatus(statusId, notice + (data.dev_code ? "，验证码 " + data.dev_code + "（已填入）" : "，请查看服务端日志"), "info");
+      if (data.dev_code) {
+        const targetId = target === "new" ? "setting-new-code" : target === "password" ? "setting-pw-code" : "setting-old-code";
+        $(targetId).value = data.dev_code;
+      }
+    } else {
+      setAuthStatus(statusId, "验证码已发送，10 分钟内有效", "success");
+    }
+    startCountdown(button);
+  } catch (e) {
+    setAuthStatus(statusId, "发送失败：" + e.message, "error");
+    button.disabled = false;
+    button.textContent = "发送验证码";
+  }
+}
+
+async function saveCampus(button) {
+  button.disabled = true;
+  try {
+    const s = await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ campus: $("setting-campus").value }),
+    });
+    state.settings = Object.assign({}, state.settings, s);
+    if (state.user) state.user.campus = s.campus;
+    setAuthStatus("setting-campus-status", "默认校区已保存为 " + (s.campus_label || s.campus), "success");
+  } catch (e) {
+    setAuthStatus("setting-campus-status", "保存失败：" + e.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function saveEmail(button) {
+  const body = {
+    old_code: $("setting-old-code").value.trim(),
+    new_email: $("setting-new-email").value.trim(),
+    new_code: $("setting-new-code").value.trim(),
+  };
+  if (!body.old_code || !body.new_email || !body.new_code) {
+    setAuthStatus("setting-email-status", "原邮箱验证码、新邮箱、新邮箱验证码都要填写", "error");
+    return;
+  }
+  button.disabled = true;
+  try {
+    const r = await api("/api/settings/email", { method: "POST", body: JSON.stringify(body) });
+    state.user = Object.assign({}, state.user, r.user, { campus: state.user.campus });
+    $("setting-email").textContent = r.user.email;
+    $("setting-old-code").value = "";
+    $("setting-new-email").value = "";
+    $("setting-new-code").value = "";
+    setAuthStatus("setting-email-status", "邮箱已更换为 " + r.user.email, "success");
+  } catch (e) {
+    setAuthStatus("setting-email-status", "更换失败：" + e.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function savePassword(button) {
+  const method = state.passwordMethod || "old";
+  const password = $("setting-new-password").value;
+  const confirm = $("setting-new-confirm").value;
+  if (password.length < 8) {
+    setAuthStatus("setting-password-status", "新密码至少 8 位", "error");
+    return;
+  }
+  if (password !== confirm) {
+    setAuthStatus("setting-password-status", "两次输入的新密码不一致，已拒绝提交", "error");
+    return;
+  }
+  const body = {
+    method,
+    old_password: method === "old" ? $("setting-old-password").value : "",
+    code: method === "code" ? $("setting-pw-code").value.trim() : "",
+    password,
+    confirm,
+  };
+  if (method === "old" && !body.old_password) {
+    setAuthStatus("setting-password-status", "请填写原密码", "error");
+    return;
+  }
+  if (method === "code" && !body.code) {
+    setAuthStatus("setting-password-status", "请填写邮箱验证码", "error");
+    return;
+  }
+  button.disabled = true;
+  try {
+    await api("/api/settings/password", { method: "POST", body: JSON.stringify(body) });
+    ["setting-old-password", "setting-pw-code", "setting-new-password", "setting-new-confirm"].forEach((id) => {
+      $(id).value = "";
+    });
+    setAuthStatus("setting-password-status", "密码已修改，下次登录请使用新密码", "success");
+  } catch (e) {
+    setAuthStatus("setting-password-status", "修改失败：" + e.message, "error");
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function saveSettings(event) {
   event.preventDefault();
+  if (state.settings && state.settings.readonly) return;
   const btn = $("setting-save");
   btn.disabled = true;
   btn.textContent = "保存中…";
@@ -265,6 +447,7 @@ async function saveSettings(event) {
         api_key: $("setting-key").value.trim(),
       }),
     });
+    state.settings = Object.assign({}, state.settings, s);
     $("setting-key").value = "";
     $("setting-status").textContent = s.has_key
       ? "已保存，Key 尾号 " + s.key_hint + "，点「测试连接」验证一次"
@@ -276,18 +459,6 @@ async function saveSettings(event) {
     btn.disabled = false;
     btn.textContent = "保存";
   }
-}
-
-async function loadSamples() {
-  try {
-    state.samples = await api("/api/samples");
-    const box = $("samples");
-    state.samples.forEach((s) => {
-      const c = el("span", "chip", s.label);
-      c.onclick = () => { $("notice").value = s.text; $("notice").focus(); };
-      box.appendChild(c);
-    });
-  } catch (e) {}
 }
 
 async function loadBoard() {
@@ -388,10 +559,13 @@ async function doExtract() {
   const btn = $("extract");
   btn.disabled = true;
   btn.textContent = "四个 Agent 在处理…";
+  runbookStart();
   try {
     const payload = await api("/api/extract", { method: "POST", body: JSON.stringify({ text: text, source_type: "text" }) });
     renderDraft(payload);
+    runbookDone(payload);
   } catch (e) {
+    runbookFail(e.message);
     alert(e.message);
   } finally {
     btn.disabled = false;
@@ -445,7 +619,6 @@ function showAuth() {
 }
 
 function startApp() {
-  $("samples").innerHTML = "";
   $("draft").classList.add("hidden");
   $("draft").innerHTML = "";
   $("notice").value = "";
@@ -454,6 +627,7 @@ function startApp() {
   $("conflict").innerHTML = "";
   $("brief").textContent = "";
   state.payload = null;
+  resetRunbook();
   loadHealth();
   loadSettings();
   loadSamples();
@@ -471,6 +645,13 @@ function enterApp(user) {
   startApp();
 }
 
+function updateCompareButton() {
+  const button = $("admin-compare");
+  const count = state.adminSelected.size;
+  button.textContent = "对比选中 (" + count + ")";
+  button.disabled = count === 0;
+}
+
 async function loadAdminUsers() {
   const box = $("admin-users");
   try {
@@ -479,6 +660,17 @@ async function loadAdminUsers() {
     box.innerHTML = "";
     data.users.forEach((u) => {
       const row = el("div", "user-row");
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.className = "user-check";
+      check.title = "加入对比";
+      check.checked = state.adminSelected.has(u.id);
+      check.onchange = () => {
+        if (check.checked) state.adminSelected.add(u.id);
+        else state.adminSelected.delete(u.id);
+        updateCompareButton();
+      };
+      row.appendChild(check);
       row.appendChild(el("div", "user-main", (u.name || "未命名") + (u.is_admin ? " · 管理员" : "")));
       row.appendChild(el("div", "user-email", u.email || "无邮箱"));
       row.appendChild(el("div", "user-count", (u.event_count || 0) + " 个事件"));
@@ -486,70 +678,86 @@ async function loadAdminUsers() {
       const actions = el("div", "user-actions");
       const view = el("button", "btn ghost btn-mini", "查看");
       view.type = "button";
-      view.onclick = () => loadAdminDetail(u.id);
+      view.onclick = () => loadAdminCompare([u.id]);
       actions.appendChild(view);
       if (!u.is_admin && u.id !== "u_demo") {
         const remove = el("button", "btn ghost btn-mini", "删除");
         remove.type = "button";
         remove.onclick = async () => {
           if (!confirm("删除用户并清理其事件和反馈？")) return;
-          try { await api("/api/admin/users/" + u.id, { method: "DELETE" }); loadAdminUsers(); }
-          catch (e) { alert(e.message); }
+          try {
+            await api("/api/admin/users/" + u.id, { method: "DELETE" });
+            state.adminSelected.delete(u.id);
+            loadAdminUsers();
+          } catch (e) { alert(e.message); }
         };
         actions.appendChild(remove);
       }
       row.appendChild(actions);
       box.appendChild(row);
     });
+    updateCompareButton();
   } catch (e) {
     $("admin-count").textContent = e.message;
   }
 }
 
-async function loadAdminDetail(userId) {
+function compareColumn(data) {
+  const col = el("div", "compare-col");
+  const head = el("div", "compare-head");
+  head.appendChild(el("b", null, data.user.name || "未命名"));
+  head.appendChild(el("span", "tiny", data.user.email || "无邮箱"));
+  col.appendChild(head);
+  const model = el("div", "detail-model");
+  model.textContent = "模型：" + (data.model.model || "未配置")
+    + " · 接口：" + (data.model.base_url || "未配置")
+    + " · Key：" + (data.model.has_key ? "已配置（不显示）" : "未配置");
+  col.appendChild(model);
+  const list = el("div", "detail-events");
+  if (!data.events.length) {
+    list.appendChild(el("div", "tiny", "这个用户还没有事件。"));
+  } else {
+    data.events.forEach((e) => {
+      const item = el("div", "detail-event");
+      item.appendChild(el("span", null, e.title || "未命名事件"));
+      item.appendChild(el("span", "tiny",
+        (e.deadline_end || "未识别").slice(0, 16) + (e.done_at ? " · 已完成" : "")));
+      list.appendChild(item);
+    });
+  }
+  col.appendChild(list);
+  return col;
+}
+
+async function loadAdminCompare(ids) {
   const box = $("admin-detail");
+  box.classList.remove("hidden");
+  box.innerHTML = "";
   try {
-    const data = await api("/api/admin/users/" + userId + "/detail");
-    box.classList.remove("hidden");
-    box.innerHTML = "";
+    const data = await api("/api/admin/users/detail?ids=" + encodeURIComponent(ids.join(",")));
     const head = el("div", "detail-head");
-    head.appendChild(el("b", null, data.user.name || "未命名"));
-    head.appendChild(el("span", "tiny", data.user.email || "无邮箱"));
+    head.appendChild(el("b", null, ids.length > 1 ? "用户对比 · " + data.users.length + " 人" : "用户详情"));
     const close = el("button", "btn ghost btn-mini", "关闭");
     close.type = "button";
     close.onclick = () => box.classList.add("hidden");
     head.appendChild(close);
     box.appendChild(head);
-    const model = el("div", "detail-model");
-    model.textContent = "模型：" + (data.model.model || "未配置")
-      + " · 接口：" + (data.model.base_url || "未配置")
-      + " · Key：" + (data.model.has_key ? "已配置（不显示）" : "未配置");
-    box.appendChild(model);
-    const list = el("div", "detail-events");
-    if (!data.events.length) {
-      list.appendChild(el("div", "tiny", "这个用户还没有事件。"));
-    } else {
-      data.events.forEach((e) => {
-        const item = el("div", "detail-event");
-        item.appendChild(el("span", null, e.title || "未命名事件"));
-        item.appendChild(el("span", "tiny",
-          (e.deadline_end || "未识别").slice(0, 16) + (e.done_at ? " · 已完成" : "")));
-        list.appendChild(item);
-      });
-    }
-    box.appendChild(list);
+    const grid = el("div", "compare-grid" + (data.users.length > 1 ? " multi" : ""));
+    data.users.forEach((item) => grid.appendChild(compareColumn(item)));
+    box.appendChild(grid);
   } catch (e) {
-    box.classList.remove("hidden");
     box.textContent = e.message;
   }
 }
 
 function enterAdmin(user) {
   state.user = user;
+  state.adminSelected = new Set();
   $("auth-screen").classList.add("hidden");
   $("app-shell").classList.add("hidden");
   $("admin-screen").classList.remove("hidden");
   $("admin-name").textContent = (user.name || "管理员") + " · " + (user.email || "");
+  updateCompareButton();
   loadAdminUsers();
 }
 
@@ -725,81 +933,114 @@ async function initAuth() {
   }
 }
 
-const themePicker = $("theme-picker");
-const themeTrigger = $("theme-trigger");
-const themeMenu = $("theme-menu");
-const themeLabel = $("theme-label");
-const themeOptions = Array.from(document.querySelectorAll(".theme-option"));
 const themeNames = { system: "跟随系统", light: "浅色", dark: "深色" };
+const themePickers = [];
+
+function syncThemePickers() {
+  const value = document.documentElement.dataset.theme || "system";
+  themePickers.forEach((picker) => {
+    picker.label.textContent = themeNames[value] || themeNames.system;
+    picker.options.forEach((option) => {
+      option.setAttribute("aria-selected", String(option.dataset.theme === value));
+    });
+  });
+}
 
 function applyTheme(theme) {
   const value = themeNames[theme] ? theme : "system";
   document.documentElement.dataset.theme = value;
-  themeLabel.textContent = themeNames[value];
-  themeOptions.forEach((option) => {
-    option.setAttribute("aria-selected", String(option.dataset.theme === value));
-  });
   try { localStorage.setItem("nudge-theme", value); } catch (e) {}
+  syncThemePickers();
 }
 
-function closeThemeMenu() {
-  themeMenu.hidden = true;
-  themeTrigger.setAttribute("aria-expanded", "false");
+function closeThemeMenu(picker) {
+  picker.menu.hidden = true;
+  picker.trigger.setAttribute("aria-expanded", "false");
 }
 
-function openThemeMenu() {
-  themeMenu.hidden = false;
-  themeTrigger.setAttribute("aria-expanded", "true");
-  const selected = themeOptions.find((option) => option.getAttribute("aria-selected") === "true");
+function closeAllThemeMenus() {
+  themePickers.forEach(closeThemeMenu);
+}
+
+function openThemeMenu(picker) {
+  closeAllThemeMenus();
+  picker.menu.hidden = false;
+  picker.trigger.setAttribute("aria-expanded", "true");
+  const selected = picker.options.find((option) => option.getAttribute("aria-selected") === "true");
   if (selected) selected.focus();
 }
 
+function setupThemePicker(root) {
+  const picker = {
+    root,
+    trigger: root.querySelector(".theme-trigger"),
+    menu: root.querySelector(".theme-menu"),
+    label: root.querySelector(".theme-label"),
+    options: Array.from(root.querySelectorAll(".theme-option")),
+  };
+  picker.trigger.onclick = () => {
+    if (picker.menu.hidden) openThemeMenu(picker);
+    else closeThemeMenu(picker);
+  };
+  picker.options.forEach((option) => {
+    option.onclick = () => {
+      applyTheme(option.dataset.theme);
+      closeThemeMenu(picker);
+      picker.trigger.focus();
+    };
+  });
+  picker.trigger.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openThemeMenu(picker);
+    }
+  });
+  picker.menu.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const current = picker.options.indexOf(document.activeElement);
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const next = (current + delta + picker.options.length) % picker.options.length;
+    picker.options[next].focus();
+  });
+  themePickers.push(picker);
+}
+
+document.querySelectorAll("[data-theme-picker]").forEach(setupThemePicker);
 applyTheme(document.documentElement.dataset.theme || "system");
 
-themeTrigger.onclick = () => {
-  if (themeMenu.hidden) openThemeMenu();
-  else closeThemeMenu();
-};
-
-themeOptions.forEach((option) => {
-  option.onclick = () => {
-    applyTheme(option.dataset.theme);
-    closeThemeMenu();
-    themeTrigger.focus();
-  };
-});
-
 document.addEventListener("click", (event) => {
-  if (!themePicker.contains(event.target)) closeThemeMenu();
+  themePickers.forEach((picker) => {
+    if (!picker.root.contains(event.target)) closeThemeMenu(picker);
+  });
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    closeThemeMenu();
-    themeTrigger.focus();
-  }
-});
-
-themeTrigger.addEventListener("keydown", (event) => {
-  if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    openThemeMenu();
-  }
-});
-
-themeMenu.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-  event.preventDefault();
-  const current = themeOptions.indexOf(document.activeElement);
-  const delta = event.key === "ArrowDown" ? 1 : -1;
-  const next = (current + delta + themeOptions.length) % themeOptions.length;
-  themeOptions[next].focus();
+  if (event.key !== "Escape") return;
+  const open = themePickers.filter((picker) => !picker.menu.hidden);
+  if (!open.length) return;
+  closeAllThemeMenus();
+  open[0].trigger.focus();
 });
 
 $("settings-btn").onclick = openSettings;
-$("setting-cancel").onclick = () => $("settings-dialog").close();
+$("admin-settings").onclick = openSettings;
+$("setting-close").onclick = () => $("settings-dialog").close();
 $("setting-test").onclick = testConnection;
 $("settings-form").onsubmit = saveSettings;
+$("setting-campus-save").onclick = () => saveCampus($("setting-campus-save"));
+$("setting-email-save").onclick = () => saveEmail($("setting-email-save"));
+$("setting-password-save").onclick = () => savePassword($("setting-password-save"));
+$("setting-old-send").onclick = () => sendSettingsCode("old", "setting-email-status", $("setting-old-send"));
+$("setting-new-send").onclick = () => sendSettingsCode("new", "setting-email-status", $("setting-new-send"));
+$("setting-pw-send").onclick = () => sendSettingsCode("password", "setting-password-status", $("setting-pw-send"));
+document.querySelectorAll("#password-method [data-method]").forEach((button) => {
+  button.onclick = () => setPasswordMethod(button.dataset.method);
+});
+$("admin-compare").onclick = () => {
+  const ids = Array.from(state.adminSelected);
+  if (ids.length) loadAdminCompare(ids);
+};
 
 $("admin-btn").onclick = () => { location.href = "/admin"; };
 $("admin-back").onclick = () => { location.href = "/app"; };

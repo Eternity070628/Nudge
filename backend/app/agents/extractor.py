@@ -27,6 +27,14 @@ CATEGORY_WORDS: dict[str, list[str]] = {
 
 IMPORTANCE_WORDS = ["学分", "保研", "推免", "评优", "奖学金", "国家级", "一等奖", "必须", "强制"]
 
+# 通知里常用「本部/西土城」指海淀校区，「昌平」指沙河校区。只在原文明确出现时判定。
+CAMPUS_ALIASES: dict[str, list[str]] = {
+    "haidian": ["海淀", "本部", "西土城"],
+    "shahe": ["沙河", "昌平"],
+    "hainan": ["海南"],
+}
+CAMPUS_LABELS = {"haidian": "海淀校区", "shahe": "沙河校区", "hainan": "海南校区", "unknown": "未识别"}
+
 SENT_SPLIT = re.compile(r"[。；;！!？?\n]+")
 
 DATE_TOKEN = r"(?:(?:\d{4}年)?\d{1,2}月\d{1,2}日(?:\s*\d{1,2}[:：]\d{2})?|\d{4}-\d{1,2}-\d{1,2}(?:[ T]\d{1,2}:\d{2})?)"
@@ -141,6 +149,17 @@ def _find_deadline(text: str, anchor: date) -> tuple[Deadline, str]:
     d = Deadline(start=dt.replace(hour=0, minute=0).isoformat(),
                  end=dt.isoformat(), raw=tok, confidence=round(conf, 2))
     return d, _evidence(text, tok)
+
+
+def campus_label(value: str | None) -> str:
+    return CAMPUS_LABELS.get(value or "", CAMPUS_LABELS["unknown"])
+
+
+def _detect_campus(text: str) -> str:
+    """按别称出现次数投票；原文没写校区就返回 unknown，绝不按常识猜。"""
+    hits = {key: sum(text.count(alias) for alias in aliases) for key, aliases in CAMPUS_ALIASES.items()}
+    best = max(hits, key=lambda key: hits[key])
+    return best if hits[best] else "unknown"
 
 
 def _find_title(text: str) -> str:
@@ -324,7 +343,8 @@ def llm_extract(text: str, anchor: date, user_id: str | None = None) -> EventDra
     return draft
 
 
-def extract(text: str, anchor: date | None = None, user_id: str | None = None) -> EventDraft:
+def extract(text: str, anchor: date | None = None, user_id: str | None = None,
+            default_campus: str | None = None) -> EventDraft:
     text = text.strip()
     anchor = anchor or date.today()
     draft, conf = rule_extract(text, anchor)
@@ -345,6 +365,20 @@ def extract(text: str, anchor: date | None = None, user_id: str | None = None) -
             if llm_draft.audience.raw or llm_draft.audience.grades:
                 draft.audience = llm_draft.audience
             draft.evidence.update({k: v for k, v in llm_draft.evidence.items() if v and v[:8] in text})
+
+    # 截止校验同时看校区：通知写了就以通知为准，没写才用用户默认校区。
+    explicit_campus = _detect_campus(text)
+    if explicit_campus != "unknown":
+        draft.campus = explicit_campus  # type: ignore[assignment]
+        if default_campus and default_campus != explicit_campus:
+            note = (f"通知写的是{campus_label(explicit_campus)}，"
+                    f"与你设置的默认校区（{campus_label(default_campus)}）不同，请确认")
+            if note not in draft.warnings:
+                draft.warnings.append(note)
+            if "campus" not in draft.needs_review:
+                draft.needs_review.append("campus")
+    elif default_campus:
+        draft.campus = default_campus  # type: ignore[assignment]
 
     for field in ("deadline", "materials", "audience", "submission"):
         key = "deadline" if field == "deadline" else field

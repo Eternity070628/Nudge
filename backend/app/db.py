@@ -70,6 +70,7 @@ def init() -> None:
             ("password_hash", "TEXT"),
             ("is_admin", "INTEGER DEFAULT 0"),
             ("disabled", "INTEGER DEFAULT 0"),
+            ("campus", "TEXT"),
         ):
             try:
                 c.execute(f"ALTER TABLE users ADD COLUMN {column} {ddl}")
@@ -87,6 +88,11 @@ def init() -> None:
             "VALUES(?,?,?,?,?,?,?,?,?,?)",
             ("u_admin", ADMIN_NAME, "", "", "[]", "admin-token-2026",
              now_iso(), ADMIN_EMAIL, ADMIN_HASH, 1),
+        )
+        # 演示账号默认给海淀校区，方便评委直接看到校区判定效果
+        c.execute(
+            "UPDATE users SET campus=? WHERE id=? AND (campus IS NULL OR campus='')",
+            ("haidian", "u_demo"),
         )
 
 
@@ -267,6 +273,16 @@ def create_user(email: str, name: str, password_hash: str, token: str) -> str:
 def update_password(email: str, password_hash: str) -> None:
     with conn() as c:
         c.execute("UPDATE users SET password_hash=? WHERE email=?", (password_hash, email))
+
+
+def update_email(user_id: str, email: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE users SET email=? WHERE id=?", (email, user_id))
+
+
+def update_campus(user_id: str, campus: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE users SET campus=? WHERE id=?", (campus, user_id))
 
 
 def list_users() -> list[dict[str, Any]]:

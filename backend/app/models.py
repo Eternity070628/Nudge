@@ -6,6 +6,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 Category = Literal["competition", "scholarship", "lecture", "affairs", "exam", "activity", "other"]
+Campus = Literal["haidian", "shahe", "hainan", "unknown"]
 
 
 class Deadline(BaseModel):
@@ -45,6 +46,7 @@ class EventDraft(BaseModel):
     """抽取 Agent 的输出，也是人工确认界面的展示结构。"""
     title: str = ""
     category: Category = "other"
+    campus: Campus = "unknown"
     deadline: Deadline = Field(default_factory=Deadline)
     audience: Audience = Field(default_factory=Audience)
     materials: list[Material] = Field(default_factory=list)
@@ -92,4 +94,23 @@ class ResetRequest(BaseModel):
 
 class SendCodeRequest(BaseModel):
     email: str
-    purpose: Literal["register", "reset"]
+    purpose: Literal["register", "reset", "change_email_old", "change_email_new", "change_password"]
+
+
+class SettingsCodeRequest(BaseModel):
+    target: Literal["old", "new", "password"]
+    new_email: str = ""
+
+
+class EmailChangeRequest(BaseModel):
+    old_code: str
+    new_email: str
+    new_code: str
+
+
+class PasswordChangeRequest(BaseModel):
+    method: Literal["old", "code"]
+    old_password: str = ""
+    code: str = ""
+    password: str
+    confirm: str

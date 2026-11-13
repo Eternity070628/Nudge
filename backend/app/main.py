@@ -20,11 +20,12 @@ from . import db
 from .agents import extractor, llm, matcher, planner, verifier
 from .auth import admin_router, current_user, require_admin, router as auth_router
 from .config import BASE_DIR
-from .models import EventCreate, ExtractRequest
-from .services import ics, mailer
+from .models import (EmailChangeRequest, EventCreate, ExtractRequest, PasswordChangeRequest,
+                     SettingsCodeRequest)
+from .services import accounts, ics, mailer
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="1.1.1")
+app = FastAPI(title="Nudge · 校园截止管家", version="1.2.0")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()
@@ -39,10 +40,13 @@ class SettingsUpdate(BaseModel):
     model: str = ""
     api_key: str = ""
     clear_key: bool = False
+    campus: str = ""
 
 
-def _public_settings(user_id: str) -> dict[str, Any]:
+def _public_settings(user_id: str, user: dict[str, Any] | None = None) -> dict[str, Any]:
     base, model, key = llm.current(user_id)
+    user = user or db.get_user(user_id) or {}
+    campus = user.get("campus") or "unknown"
     return {
         "base_url": base,
         "model": model,
@@ -50,7 +54,17 @@ def _public_settings(user_id: str) -> dict[str, Any]:
         "key_hint": ("****" + key[-4:]) if len(key) >= 4 else ("****" if key else ""),
         "mode": llm.mode(user_id) or "auto",
         "available": llm.available(user_id),
+        "email": user.get("email") or "",
+        "campus": campus,
+        "campus_label": extractor.campus_label(campus),
+        "readonly": user_id == "u_demo",
+        "is_admin": bool(user.get("is_admin")),
     }
+
+
+def _reject_demo(user: dict[str, Any]) -> None:
+    if user["id"] == "u_demo":
+        raise HTTPException(403, "演示账号为只读模式，请注册自己的账号后再修改")
 
 
 def _decorate(event: dict[str, Any]) -> dict[str, Any]:
@@ -90,11 +104,17 @@ def health() -> dict[str, Any]:
 
 @app.get("/api/settings")
 def api_settings(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    return _public_settings(user["id"])
+    return _public_settings(user["id"], user)
 
 
 @app.post("/api/settings")
 def api_save_settings(body: SettingsUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _reject_demo(user)
+    if body.campus.strip():
+        try:
+            accounts.set_campus(user["id"], body.campus)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
     values: dict[str, str] = {}
     if body.base_url.strip():
         values["base_url"] = body.base_url.strip().rstrip("/")
@@ -111,7 +131,54 @@ def api_save_settings(body: SettingsUpdate, user: dict[str, Any] = Depends(curre
     values["llm_mode"] = "model" if has_key and not body.clear_key else "auto"
     if values:
         db.save_user_settings(user["id"], values)
-    return _public_settings(user["id"])
+    return _public_settings(user["id"], db.get_user(user["id"]))
+
+
+@app.post("/api/settings/code")
+def api_settings_code(body: SettingsCodeRequest, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _reject_demo(user)
+    purposes = {"old": "change_email_old", "new": "change_email_new", "password": "change_password"}
+    purpose = purposes[body.target]
+    email = (body.new_email if body.target == "new" else user.get("email") or "").strip()
+    if not email:
+        raise HTTPException(400, "当前账号没有绑定邮箱，无法使用验证码")
+    try:
+        result = accounts.issue_code(email, purpose)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except mailer.MailError as error:
+        raise HTTPException(503, str(error)) from error
+    return {
+        "ok": True,
+        "dev": result["dev"],
+        "dev_code": result["code"] if result["dev"] else "",
+        "expires_in": result["expires_in"],
+        "notice": ("开发模式：未真实发信，验证码只显示在本页和服务端日志"
+                   if result["dev"] else ""),
+    }
+
+
+@app.post("/api/settings/email")
+def api_settings_email(body: EmailChangeRequest,
+                       user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _reject_demo(user)
+    try:
+        updated = accounts.change_email(user["id"], body.old_code, body.new_email, body.new_code)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    return {"ok": True, "user": updated}
+
+
+@app.post("/api/settings/password")
+def api_settings_password(body: PasswordChangeRequest,
+                          user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _reject_demo(user)
+    try:
+        accounts.change_password(user["id"], body.method, body.old_password,
+                                 body.code, body.password, body.confirm)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    return {"ok": True}
 
 
 @app.get("/api/llm-test")
@@ -133,7 +200,8 @@ def api_extract(req: ExtractRequest, user: dict[str, Any] = Depends(current_user
             anchor = datetime.fromisoformat(req.published_at).date()
         except ValueError:
             pass
-    draft = extractor.extract(req.text, anchor=anchor, user_id=user["id"])
+    draft = extractor.extract(req.text, anchor=anchor, user_id=user["id"],
+                              default_campus=user.get("campus"))
     draft.source.type = req.source_type  # type: ignore[assignment]
     draft.source.url = req.url
     draft = verifier.verify(req.text, draft)
@@ -239,7 +307,8 @@ def api_samples() -> list[dict[str, str]]:
 def api_seed(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     added = 0
     for s in SAMPLES:
-        draft = extractor.extract(s["text"], user_id=user["id"])
+        draft = extractor.extract(s["text"], user_id=user["id"],
+                                  default_campus=user.get("campus"))
         draft = verifier.verify(s["text"], draft)
         rel, reasons = matcher.match(draft, user)
         _, created = db.save_event(draft, user["id"], rel, reasons)

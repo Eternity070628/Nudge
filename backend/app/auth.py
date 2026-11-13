@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from . import db
 from .agents import llm
@@ -121,9 +121,7 @@ def api_admin_users(_: dict[str, Any] = Depends(require_admin)) -> dict[str, Any
     return {"users": db.list_users()}
 
 
-@admin_router.get("/users/{user_id}/detail")
-def api_admin_user_detail(user_id: str, _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
-    """管理员看某个用户的事件与模型配置；只返回是否有 Key，不返回 Key。"""
+def _admin_detail(user_id: str) -> dict[str, Any]:
     user = db.get_user(user_id)
     if not user:
         raise HTTPException(404, "用户不存在")
@@ -133,6 +131,22 @@ def api_admin_user_detail(user_id: str, _: dict[str, Any] = Depends(require_admi
         "model": {"base_url": base, "model": model, "has_key": bool(key)},
         "events": db.list_events(user_id),
     }
+
+
+@admin_router.get("/users/detail")
+def api_admin_users_detail(ids: str = Query(""),
+                           _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """一次看多个用户的事件与模型配置，方便管理端并排对比。"""
+    wanted = [item.strip() for item in ids.split(",") if item.strip()][:6]
+    if not wanted:
+        raise HTTPException(400, "请至少选择一个用户")
+    return {"users": [_admin_detail(user_id) for user_id in wanted if db.get_user(user_id)]}
+
+
+@admin_router.get("/users/{user_id}/detail")
+def api_admin_user_detail(user_id: str, _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """管理员看某个用户的事件与模型配置；只返回是否有 Key，不返回 Key。"""
+    return _admin_detail(user_id)
 
 
 @admin_router.delete("/users/{user_id}")

@@ -16,6 +16,7 @@ EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 SESSION_DAYS = 7
 CODE_MINUTES = 10
 CODE_INTERVAL_SECONDS = 60
+CAMPUSES = ("haidian", "shahe", "hainan")
 
 
 def normalize_email(value: str) -> str:
@@ -98,9 +99,9 @@ def _validate_email(email: str) -> str:
 def issue_code(email: str, purpose: str) -> dict[str, Any]:
     email = _validate_email(email)
     user = find_by_email(email)
-    if purpose == "register" and user:
+    if purpose in ("register", "change_email_new") and user:
         raise ValueError("该邮箱已注册，请直接登录")
-    if purpose == "reset" and not user:
+    if purpose in ("reset", "change_email_old", "change_password") and not user:
         raise ValueError("该邮箱尚未注册")
     last = db.last_email_code_at(email, purpose)
     if last:
@@ -165,3 +166,51 @@ def reset_password(email: str, code: str, password: str, confirm: str) -> None:
 
 def demo_user() -> dict[str, Any] | None:
     return public_user(db.get_user("u_demo"))
+
+
+def change_email(user_id: str, old_code: str, new_email: str, new_code: str) -> dict[str, Any]:
+    user = db.get_user(user_id)
+    if not user:
+        raise ValueError("用户不存在")
+    old_email = normalize_email(user.get("email") or "")
+    new_email = _validate_email(new_email)
+    if not old_email:
+        raise ValueError("当前账号没有绑定邮箱")
+    if new_email == old_email:
+        raise ValueError("新邮箱不能与当前邮箱相同")
+    if find_by_email(new_email):
+        raise ValueError("新邮箱已被其他账号占用")
+    _consume_code(old_email, "change_email_old", old_code)
+    _consume_code(new_email, "change_email_new", new_code)
+    db.update_email(user_id, new_email)
+    return public_user(db.get_user(user_id)) or user
+
+
+def change_password(user_id: str, method: str, old_password: str, code: str,
+                    password: str, confirm: str) -> None:
+    user = db.get_user(user_id)
+    if not user:
+        raise ValueError("用户不存在")
+    if len(password or "") < 8:
+        raise ValueError("新密码至少 8 位")
+    if password != confirm:
+        raise ValueError("两次输入的新密码不一致")
+    if method == "old":
+        if not verify_password(old_password or "", user.get("password_hash") or ""):
+            raise ValueError("原密码错误")
+    elif method == "code":
+        email = normalize_email(user.get("email") or "")
+        if not email:
+            raise ValueError("当前账号没有绑定邮箱")
+        _consume_code(email, "change_password", code)
+    else:
+        raise ValueError("未知的密码修改方式")
+    db.update_password(normalize_email(user.get("email") or ""), hash_password(password))
+
+
+def set_campus(user_id: str, campus: str) -> dict[str, Any]:
+    value = (campus or "").strip()
+    if value not in CAMPUSES:
+        raise ValueError("未知校区")
+    db.update_campus(user_id, value)
+    return public_user(db.get_user(user_id)) or {}

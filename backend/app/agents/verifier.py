@@ -20,8 +20,9 @@ def _norm(s: str) -> str:
 def verify(text: str, draft: EventDraft) -> EventDraft:
     conf = dict(draft.confidence or {})
     norm_text = _norm(text)
-    needs: list[str] = []
-    warnings: list[str] = []
+    # 保留上游（如校区冲突）已写入的待确认项，避免校验阶段把它们覆盖掉
+    needs: list[str] = list(dict.fromkeys(draft.needs_review or []))
+    warnings: list[str] = list(dict.fromkeys(draft.warnings or []))
 
     for field, quote in list(draft.evidence.items()):
         if not quote:
