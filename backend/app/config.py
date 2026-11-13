@@ -68,7 +68,7 @@ NUDGE_EMAIL_DEV = os.getenv("NUDGE_EMAIL_DEV", "").strip().lower() in ("1", "tru
 # 不依赖微软 Graph。凭据同样只从环境变量 / .env 读，不写进代码和仓库。
 # MAIL_TRANSPORT=auto 时：有 SMTP 凭据就优先 SMTP，否则退回 Graph，再否则开发模式。
 # ---------------------------------------------------------------------------
-MAIL_TRANSPORT = os.getenv("MAIL_TRANSPORT", "auto").strip().lower()  # auto | smtp | graph | dev
+MAIL_TRANSPORT = os.getenv("MAIL_TRANSPORT", "auto").strip().lower()  # auto | smtp | graph | brevo | dev
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.exmail.qq.com").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "465") or 465)
 SMTP_SECURITY = os.getenv("SMTP_SECURITY", "ssl").strip().lower()  # ssl | starttls | none
@@ -79,6 +79,16 @@ SMTP_SENDER = os.getenv("SMTP_SENDER", "").strip() or SMTP_USER or GRAPH_SENDER
 SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "Nudge").strip()
 # 自建/别名主机名证书不匹配时，可临时设 0（默认严格校验）
 SMTP_VERIFY_TLS = os.getenv("SMTP_VERIFY_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+
+# ---------------------------------------------------------------------------
+# 邮箱验证码（第三条通道）：Brevo 的 HTTPS 邮件 API。
+# 免费主机（例如 PythonAnywhere 免费版）禁止出站 SMTP，但 443 是通的，
+# 于是把信交给 Brevo 的 HTTPS 接口发：不受端口封锁影响，免费额度 300 封/天。
+# 发件地址必须先在 Brevo 后台验证过（Senders & IP），key 同样只从环境变量读。
+# ---------------------------------------------------------------------------
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
+BREVO_SENDER = os.getenv("BREVO_SENDER", "").strip() or SMTP_SENDER
+BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "").strip() or SMTP_SENDER_NAME
 
 TZ = "Asia/Shanghai"
 

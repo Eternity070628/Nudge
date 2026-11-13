@@ -33,6 +33,7 @@ from .. import config, db
 GRAPH_TOKEN = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
 GRAPH_DEVICE = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/devicecode"
 GRAPH_SEND = "https://graph.microsoft.com/v1.0/me/sendMail"
+BREVO_SEND = "https://api.brevo.com/v3/smtp/email"
 DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 
 # 这几类状态码几乎都是微软侧的问题（服务降级 / 故障），不该让用户以为是自己配错了
@@ -212,6 +213,60 @@ def _smtp_send(to_email: str, subject: str, text: str) -> None:
             pass
 
 
+def _brevo_configured() -> bool:
+    return bool(config.BREVO_API_KEY)
+
+
+def _brevo_send(to_email: str, subject: str, text: str) -> None:
+    """用 Brevo 的 HTTPS 邮件 API 发信：不受出站 SMTP 封锁影响（PythonAnywhere 免费版就靠它）。"""
+    payload = {
+        "sender": {"name": config.BREVO_SENDER_NAME, "email": config.BREVO_SENDER},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": text,
+    }
+    request = urllib.request.Request(
+        BREVO_SEND,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "api-key": config.BREVO_API_KEY,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=25) as response:
+            response.read()
+    except urllib.error.HTTPError as error:
+        raw = ""
+        try:
+            raw = error.read().decode("utf-8", "replace")
+        except Exception:
+            pass
+        if error.code == 401:
+            raise MailError(
+                "Brevo 拒绝了这个 API key（HTTP 401）：key 填错了或已被撤销，"
+                "去 Brevo 后台 SMTP & API → API Keys 重新生成一个，填进 BREVO_API_KEY。"
+            ) from error
+        if error.code in (400, 403) and ("sender" in raw.lower() or "verify" in raw.lower()):
+            raise MailError(
+                f"Brevo 发件地址还没验证（HTTP {error.code}）：{raw[:200]}。"
+                f"先登录 Brevo → Senders & IP 验证 {config.BREVO_SENDER}，再重发。"
+            ) from error
+        if error.code == 429:
+            raise MailError(
+                "Brevo 触发频率/额度限制（HTTP 429）：免费额度是每天 300 封，稍后再试。"
+            ) from error
+        if error.code >= 500:
+            raise MailError(
+                f"Brevo 服务暂时不可用（HTTP {error.code}），这是对方侧故障，稍后重试即可：{raw[:200]}"
+            )
+        raise MailError(f"Brevo 发信失败（HTTP {error.code}）：{raw[:300]}")
+    except Exception as error:
+        raise MailError(f"Brevo 连接失败：{error}（确认服务器能访问 443 端口的 api.brevo.com）") from error
+
+
 def send_code(to_email: str, code: str, purpose: str) -> dict:
     """发送验证码；开发模式返回 dev=True，由接口决定是否回显。"""
     if config.NUDGE_EMAIL_DEV:
@@ -220,7 +275,11 @@ def send_code(to_email: str, code: str, purpose: str) -> dict:
     action = "注册" if purpose == "register" else "重置密码"
     subject = f"Nudge {action}验证码"
     text = _mail_text(action, code)
-    if status()["mode"] == "smtp":
+    mode = status()["mode"]
+    if mode == "brevo":
+        _brevo_send(to_email, subject, text)
+        return {"dev": False}
+    if mode == "smtp":
         _smtp_send(to_email, subject, text)
         return {"dev": False}
 
@@ -242,24 +301,38 @@ def status() -> dict:
     """给前端/运维看的真实状态：真发信走哪条通道、还是开发模式 / 缺配置。"""
     authorized = bool(_stored_token())
     smtp_ready = _smtp_configured()
+    brevo_ready = _brevo_configured()
     transport = config.MAIL_TRANSPORT
     if config.NUDGE_EMAIL_DEV or transport == "dev":
         mode = "dev"
+    elif transport == "brevo":
+        mode = "brevo" if brevo_ready else "unconfigured"
     elif transport == "smtp":
         mode = "smtp" if smtp_ready else "unconfigured"
     elif transport == "graph":
         mode = "graph" if authorized else "unconfigured"
-    elif smtp_ready:  # auto：有 SMTP 凭据就优先它，学校邮箱通常更稳
+    elif brevo_ready:  # auto：Brevo 走 443，连被封 SMTP 的主机也能发，优先它
+        mode = "brevo"
+    elif smtp_ready:
         mode = "smtp"
     elif authorized:
         mode = "graph"
     else:
         mode = "unconfigured"
+    senders = {
+        "brevo": config.BREVO_SENDER,
+        "smtp": config.SMTP_SENDER,
+        "graph": config.GRAPH_SENDER,
+    }
     return {
         "mode": mode,
         "transport": transport,
-        "real_sending": mode in ("smtp", "graph"),
-        "sender": config.SMTP_SENDER if mode == "smtp" else config.GRAPH_SENDER,
+        "real_sending": mode in ("brevo", "smtp", "graph"),
+        "sender": senders.get(mode, config.GRAPH_SENDER),
+        "brevo": {
+            "sender": config.BREVO_SENDER,
+            "key_set": brevo_ready,
+        },
         "smtp": {
             "host": config.SMTP_HOST,
             "port": config.SMTP_PORT,

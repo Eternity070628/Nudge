@@ -161,6 +161,28 @@ PythonAnywhere 免费账号**禁止出站 SMTP**：本机明明能发出的 `smt
 
 线上改配置的方式：仓库根目录放一份 `.env`（它已在 `.gitignore` 里，`git pull` 不会覆盖它），改完在 PythonAnywhere 的 Web 页面点一次 Reload。可以用 `GET /api/auth/mail-status` 确认线上当前是 `dev` 还是真发信。
 
+### 6.1.3 线上真发信：Brevo（走 443，免费额度 300 封/天）
+
+出站 SMTP 被封死的免费主机，用 Brevo 的 HTTPS 邮件 API 就能真发：
+
+1. 注册 https://www.brevo.com/（免费版每天 300 封）；
+2. **Senders & IP → Add a sender** 填发件地址（例如学校邮箱），去那个邮箱点确认邮件里的链接——**没验证发件地址会被 400 拒绝**；
+3. **SMTP & API → API Keys → Create a new API key**，复制 `xkeysib-...`；
+4. 写进线上 `.env`：
+
+```bash
+MAIL_TRANSPORT=brevo
+BREVO_API_KEY=xkeysib-...
+BREVO_SENDER=2025212080@bupt.cn
+BREVO_SENDER_NAME=Nudge
+NUDGE_EMAIL_DEV=0
+```
+
+5. 点 Reload，`GET /api/auth/mail-status` 应该返回 `mode: "brevo"`、`real_sending: true`；
+6. 注册页会显示「验证码由 <发件地址> 通过 Brevo 邮件服务真实发出」，验证码会真的进邮箱。
+
+常见报错都做了中文映射：key 错是 401、发件地址没验证是 400、超额度是 429、Brevo 侧故障是 5xx——**任何情况下都不会假装发送成功**。
+
 ![登录页发信状态](docs/login-mail-status.png)
 
 保留 `u_demo` 公开演示账号，登录页有「进入公开演示账号」；新注册用户从空看板开始。登录态使用 HttpOnly Cookie session；密码只存 PBKDF2 哈希。
