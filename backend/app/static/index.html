@@ -6,6 +6,9 @@
 <title>Nudge · 校园截止管家</title>
 <script>
 (() => {
+  document.documentElement.dataset.page =
+    location.pathname === "/admin" ? "admin" :
+    location.pathname === "/app" ? "app" : "login";
   try {
     const v = localStorage.getItem("nudge-theme");
     document.documentElement.dataset.theme = ["system", "light", "dark"].includes(v) ? v : "system";
@@ -71,7 +74,6 @@
       <p class="auth-status" id="reset-status"></p>
       <button class="btn primary auth-submit" type="submit">重置密码</button>
     </form>
-    <p class="auth-note">验证码由 Eternity070628@outlook.com 发送。Graph 未授权时，开发模式会在页面显示验证码。</p>
   </div>
 </section>
 

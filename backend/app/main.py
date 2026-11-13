@@ -24,7 +24,7 @@ from .models import EventCreate, ExtractRequest
 from .services import ics
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="1.0.0")
+app = FastAPI(title="Nudge · 校园截止管家", version="1.0.1")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()
@@ -296,6 +296,16 @@ def api_deploy(x_deploy_token: str = Header(""), token: str = Query("")) -> dict
 
 @app.get("/")
 def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/app")
+def app_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/admin")
+def admin_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 

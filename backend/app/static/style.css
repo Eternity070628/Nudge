@@ -148,6 +148,12 @@ textarea:focus{border-color:rgba(247,178,103,.55)}
 .draft{margin-top:20px;border-top:1px dashed var(--line);padding-top:18px}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .hidden{display:none}
+html[data-page="app"] #auth-screen,
+html[data-page="app"] #admin-screen{display:none}
+html[data-page="admin"] #auth-screen,
+html[data-page="admin"] #app-shell{display:none}
+html[data-page="login"] #app-shell,
+html[data-page="login"] #admin-screen{display:none}
 .draft h3{margin:0 0 10px;font-size:17px;line-height:1.5}
 .rowline{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 .badge{font-size:11px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);color:var(--badge-ink);background:var(--badge-bg)}

@@ -302,7 +302,7 @@ async function loadBoard() {
     $("list-count").textContent = active + " 项";
     $("board-hint").textContent = data.stats.saved_minutes + " 分钟已省下";
   } catch (e) {
-    if (e.message === "请先登录") showAuth();
+    if (e.message === "请先登录") location.href = "/";
     else $("board-hint").textContent = "无法连接后端";
   }
 }
@@ -567,8 +567,8 @@ async function handleLogin(event) {
       method: "POST",
       body: JSON.stringify({ email: $("login-email").value.trim(), password: $("login-password").value }),
     });
-    if (data.user.is_admin) enterAdmin(data.user);
-    else enterApp(data.user);
+    if (data.user.is_admin) location.href = "/admin";
+    else location.href = "/app";
   } catch (e) {
     status.textContent = e.message;
   }
@@ -589,7 +589,7 @@ async function handleRegister(event) {
         code: $("register-code").value.trim(),
       }),
     });
-    enterApp(data.user);
+    location.href = "/app";
   } catch (e) {
     status.textContent = e.message;
   }
@@ -620,7 +620,7 @@ async function handleReset(event) {
 async function handleDemo() {
   try {
     const data = await api("/api/auth/demo", { method: "POST", body: JSON.stringify({}) });
-    enterApp(data.user);
+    location.href = "/app";
   } catch (e) {
     $("login-status").textContent = e.message;
   }
@@ -628,16 +628,26 @@ async function handleDemo() {
 
 async function handleLogout() {
   try { await api("/api/auth/logout", { method: "POST", body: JSON.stringify({}) }); } catch (e) {}
-  showAuth();
+  location.href = "/";
 }
 
 async function initAuth() {
+  const path = location.pathname;
   try {
     const data = await api("/api/auth/me");
-    if (data.user.is_admin) enterAdmin(data.user);
-    else enterApp(data.user);
+    if (path === "/") {
+      location.replace(data.user.is_admin ? "/admin" : "/app");
+      return;
+    }
+    if (path === "/admin") {
+      if (!data.user.is_admin) { location.replace("/app"); return; }
+      enterAdmin(data.user);
+      return;
+    }
+    enterApp(data.user);
   } catch (e) {
-    showAuth();
+    if (path === "/") showAuth();
+    else location.replace("/");
   }
 }
 
@@ -717,8 +727,8 @@ $("setting-cancel").onclick = () => $("settings-dialog").close();
 $("setting-test").onclick = testConnection;
 $("settings-form").onsubmit = saveSettings;
 
-$("admin-btn").onclick = () => state.user && enterAdmin(state.user);
-$("admin-back").onclick = () => state.user && enterApp(state.user);
+$("admin-btn").onclick = () => { location.href = "/admin"; };
+$("admin-back").onclick = () => { location.href = "/app"; };
 $("logout-btn").onclick = handleLogout;
 $("admin-logout").onclick = handleLogout;
 $("login-form").onsubmit = handleLogin;
