@@ -115,55 +115,7 @@ nudge/
 
 进入站点先登录。支持邮箱+密码登录、昵称/邮箱/密码/验证码注册、邮箱验证码重置密码；密码框可切换明文查看。登录成功后跳转到独立的 `/app` 或 `/admin` 页面，不和登录表单共用一个滚动页；管理员邮箱登录自动进入管理端，可查看和删除用户；删除用户会清理其事件、反馈和会话。
 
-验证码由 `Eternity070628@outlook.com` 本人通过 **Microsoft Graph** 发出（`POST /v1.0/me/sendMail`）。为什么不是 SMTP：Outlook 个人账户自 2024-09-16 起停用 SMTP 基本认证，应用专用密码同样失效，而且不少校园网封出站 587/465；Graph 走 HTTPS 443，发件人、签名和「已发送」文件夹都对得上。
-
-三步接入：
-
-```bash
-cp .env.example .env                     # 至少确认 GRAPH_SENDER
-cd backend
-python -m app.services.mailer auth       # 打印 8 位代码，用该邮箱打开 https://www.microsoft.com/link 同意一次
-python -m app.services.mailer status     # mode=graph、real_sending=true 就说明真能发信了
-```
-
-- 默认客户端是微软官方发布的公共客户端「Microsoft Graph Command Line Tools」，已允许设备码流，个人账户可直接授权，**不必自己注册 Entra 应用**；要用自己的应用就覆盖 `GRAPH_CLIENT_ID`。
-- 已有 refresh token 时用 `python -m app.services.mailer auth --import-token "M.C5..."` 直接写入；或把 token 放进 `GRAPH_REFRESH_TOKEN`，启动时自动写入本机 SQLite（部署到临时文件系统的机器用这条）。
-- 令牌只存在 `backend/data/nudge.db` 的 settings 表；`.env` 与数据库都已 gitignore，都不进仓库。每次刷新微软会换发新 token，代码会自动回写。
-- 前端用 `GET /api/auth/mail-status` 显示当前是 `graph`（真发信）/ `dev`（开发模式）/ `unconfigured`（未授权），不让「看起来发了、其实没发」混过去。
-- 微软故障时接口返回 **503** 并写明「Microsoft Graph 暂时不可用（HTTP 502），这是微软侧故障，不是配置问题」；此时可临时 `NUDGE_EMAIL_DEV=1` 走开发模式。
-- 开发模式：验证码回显到页面和服务端日志，并明确标注「未真实发信」，不会伪造发送成功。
-
-### 6.1.1 用学校邮箱 SMTP 发信（北邮学生邮箱实测可用）
-
-学校发的学生邮箱（如 `2025212080@bupt.cn`）后端是腾讯企业邮，`smtp.exmail.qq.com:465` 在本机可直接连、证书有效，配好就能发，完全绕开微软那条线：
-
-```bash
-MAIL_TRANSPORT=auto
-SMTP_HOST=smtp.exmail.qq.com
-SMTP_PORT=465
-SMTP_SECURITY=ssl
-SMTP_USER=2025212080@bupt.cn
-SMTP_PASS=<邮箱设置里开启 SMTP 后生成的客户端专用密码>
-SMTP_SENDER=2025212080@bupt.cn
-```
-
-- 先在邮箱网页版的「设置 → 账户/安全 → 客户端设置」里开启 SMTP 服务，密码用生成的**客户端专用密码**，不是网页登录密码。
-- `MAIL_TRANSPORT=auto` 的选择顺序：有 SMTP 凭据 → SMTP；否则有 Graph 令牌 → Graph；否则开发模式。
-- `GET /api/auth/mail-status` 的 `mode` 会变成 `smtp`，登录页文案同步变成「通过邮箱 SMTP 真实发出」。
-- `smtp.bupt.cn` 也能连，但它复用腾讯的证书、主机名对不上，严格校验会被拒；直接写标准主机名 `smtp.exmail.qq.com`。
-
-### 6.1.2 部署在 PythonAnywhere 时怎么发信
-
-PythonAnywhere 免费账号**禁止出站 SMTP**：本机明明能发出的 `smtp.exmail.qq.com:465/587`，到了 PA 上直接 `Network is unreachable`（`smtp.pythonanywhere.com` 的 25/465/587 也是 connection refused）。所以线上只有两条真发信路：
-
-- **Microsoft Graph（推荐，走 443）**：`python -m app.services.mailer auth` 换到 refresh token 后，把 `GRAPH_REFRESH_TOKEN` 放进线上 `.env`，`MAIL_TRANSPORT=graph`。
-- **HTTPS 邮件 API**（Brevo 等）：同样只走 443，不受端口限制。
-
-在拿到以上凭据之前，线上把 `NUDGE_EMAIL_DEV=1` 打开即可正常注册——验证码显示在页面上并明确标注「开发模式：未真实发信」，不会假装发送成功。
-
-线上改配置的方式：仓库根目录放一份 `.env`（它已在 `.gitignore` 里，`git pull` 不会覆盖它），改完在 PythonAnywhere 的 Web 页面点一次 Reload。可以用 `GET /api/auth/mail-status` 确认线上当前是 `dev` 还是真发信。
-
-### 6.1.3 线上真发信：Brevo（走 443，免费额度 300 封/天）
+### 6.1.1 线上真发信：Brevo（走 443，免费额度 300 封/天）
 
 出站 SMTP 被封死的免费主机，用 Brevo 的 HTTPS 邮件 API 就能真发：
 
