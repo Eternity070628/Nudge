@@ -286,8 +286,8 @@ submission.{channel(web|email|offline|unknown),url,email,location}, evidence{字
 规则：所有日期转 ISO8601（Asia/Shanghai）；evidence 必须是原文逐字片段；不确定就留空，禁止编造。"""
 
 
-def llm_extract(text: str, anchor: date) -> EventDraft | None:
-    out = llm.chat(LLM_SYSTEM, text[:6000])
+def llm_extract(text: str, anchor: date, user_id: str | None = None) -> EventDraft | None:
+    out = llm.chat(LLM_SYSTEM, text[:6000], user_id=user_id)
     if not out:
         return None
     try:
@@ -324,14 +324,14 @@ def llm_extract(text: str, anchor: date) -> EventDraft | None:
     return draft
 
 
-def extract(text: str, anchor: date | None = None) -> EventDraft:
+def extract(text: str, anchor: date | None = None, user_id: str | None = None) -> EventDraft:
     text = text.strip()
     anchor = anchor or date.today()
     draft, conf = rule_extract(text, anchor)
     draft.source = Source(type="text")
 
-    if llm.available():
-        llm_draft = llm_extract(text, anchor)
+    if llm.available(user_id):
+        llm_draft = llm_extract(text, anchor, user_id)
         if llm_draft:
             # 只接受能在原文里找到证据的字段，防止幻觉
             if llm_draft.title:

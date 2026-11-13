@@ -22,46 +22,46 @@
 
 :root[data-theme="light"]{
   --bg:#f5f1ea; --panel:rgba(255,255,255,.78); --line:rgba(20,30,50,.14);
-  --ink:#172033; --dim:#5b6478; --amber:#b45309; --flame:#c2410c; --teal:#0f766e;
+  --ink:#172033; --dim:#5b6478; --amber:#d97706; --flame:#ea580c; --teal:#0f766e;
   --red:#dc2626; --ok:#15803d;
   --line-soft:rgba(20,30,50,.08); --badge-ink:#334155; --badge-bg:rgba(15,23,42,.04);
   --input:rgba(15,23,42,.05); --chip-bg:rgba(15,23,42,.03); --stat-bg:rgba(255,255,255,.7);
   --ev-bg:rgba(255,255,255,.7); --ev-border:rgba(20,30,50,.1);
-  --scroll-thumb:rgba(20,30,50,.18); --quote-bg:rgba(180,83,9,.08);
-  --warn-bg:rgba(180,83,9,.08); --warn-border:rgba(180,83,9,.25);
+  --scroll-thumb:rgba(20,30,50,.18); --quote-bg:rgba(217,119,6,.08);
+  --warn-bg:rgba(217,119,6,.08); --warn-border:rgba(217,119,6,.25);
   --mark-ink:#231404; --mark-shadow:rgba(244,132,95,.18); --btn-ink:#1d1206;
   --mat-ink:#334155; --brief-bg:rgba(15,118,110,.08); --brief-border:rgba(15,118,110,.22);
   --brief-ink:#134e4a; --footer-ink:#5b6478; --shadow:rgba(31,41,55,.14);
   --backdrop:rgba(15,23,42,.35); --dialog-shadow:rgba(31,41,55,.2);
   --glow1:rgba(247,178,103,.25); --glow2:rgba(96,165,250,.16); --glow-opacity:.45;
   --cat-bg:rgba(15,118,110,.08); --cat-border:rgba(15,118,110,.28);
-  --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(180,83,9,.12); --red-bg:rgba(220,38,38,.1);
-  --step-border:rgba(180,83,9,.25); --ev-x-border:rgba(15,118,110,.28); --ev-x-bg:rgba(15,118,110,.1);
+  --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(217,119,6,.12); --red-bg:rgba(220,38,38,.1);
+  --step-border:rgba(217,119,6,.25); --ev-x-border:rgba(15,118,110,.28); --ev-x-bg:rgba(15,118,110,.1);
   --menu-bg:#ffffff; --menu-border:rgba(20,30,50,.14); --menu-hover:rgba(15,23,42,.05);
-  --menu-selected-bg:rgba(180,83,9,.12); --menu-selected-ink:#b45309; --menu-shadow:0 18px 40px rgba(31,41,55,.16);
+  --menu-selected-bg:rgba(217,119,6,.12); --menu-selected-ink:#d97706; --menu-shadow:0 18px 40px rgba(31,41,55,.16);
   color-scheme:light;
 }
 
 @media (prefers-color-scheme: light){
   :root:not([data-theme="dark"]){
     --bg:#f5f1ea; --panel:rgba(255,255,255,.78); --line:rgba(20,30,50,.14);
-    --ink:#172033; --dim:#5b6478; --amber:#b45309; --flame:#c2410c; --teal:#0f766e;
+    --ink:#172033; --dim:#5b6478; --amber:#d97706; --flame:#ea580c; --teal:#0f766e;
     --red:#dc2626; --ok:#15803d;
     --line-soft:rgba(20,30,50,.08); --badge-ink:#334155; --badge-bg:rgba(15,23,42,.04);
     --input:rgba(15,23,42,.05); --chip-bg:rgba(15,23,42,.03); --stat-bg:rgba(255,255,255,.7);
     --ev-bg:rgba(255,255,255,.7); --ev-border:rgba(20,30,50,.1);
-    --scroll-thumb:rgba(20,30,50,.18); --quote-bg:rgba(180,83,9,.08);
-    --warn-bg:rgba(180,83,9,.08); --warn-border:rgba(180,83,9,.25);
+    --scroll-thumb:rgba(20,30,50,.18); --quote-bg:rgba(217,119,6,.08);
+    --warn-bg:rgba(217,119,6,.08); --warn-border:rgba(217,119,6,.25);
     --mark-ink:#231404; --mark-shadow:rgba(244,132,95,.18); --btn-ink:#1d1206;
     --mat-ink:#334155; --brief-bg:rgba(15,118,110,.08); --brief-border:rgba(15,118,110,.22);
     --brief-ink:#134e4a; --footer-ink:#5b6478; --shadow:rgba(31,41,55,.14);
     --backdrop:rgba(15,23,42,.35); --dialog-shadow:rgba(31,41,55,.2);
     --glow1:rgba(247,178,103,.25); --glow2:rgba(96,165,250,.16); --glow-opacity:.45;
     --cat-bg:rgba(15,118,110,.08); --cat-border:rgba(15,118,110,.28);
-    --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(180,83,9,.12); --red-bg:rgba(220,38,38,.1);
-    --step-border:rgba(180,83,9,.25); --ev-x-border:rgba(15,118,110,.28); --ev-x-bg:rgba(15,118,110,.1);
+    --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(217,119,6,.12); --red-bg:rgba(220,38,38,.1);
+    --step-border:rgba(217,119,6,.25); --ev-x-border:rgba(15,118,110,.28); --ev-x-bg:rgba(15,118,110,.1);
   --menu-bg:#ffffff; --menu-border:rgba(20,30,50,.14); --menu-hover:rgba(15,23,42,.05);
-  --menu-selected-bg:rgba(180,83,9,.12); --menu-selected-ink:#b45309; --menu-shadow:0 18px 40px rgba(31,41,55,.16);
+  --menu-selected-bg:rgba(217,119,6,.12); --menu-selected-ink:#d97706; --menu-shadow:0 18px 40px rgba(31,41,55,.16);
     color-scheme:light;
   }
 }
@@ -155,12 +155,13 @@ html[data-page="admin"] #app-shell{display:none}
 html[data-page="login"] #app-shell,
 html[data-page="login"] #admin-screen{display:none}
 .draft h3{margin:0 0 10px;font-size:17px;line-height:1.5}
-.rowline{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
-.badge{font-size:11px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);color:var(--badge-ink);background:var(--badge-bg)}
+.rowline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.badge{font-size:11px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);color:var(--badge-ink);background:var(--badge-bg);white-space:nowrap}
 .badge.cat{color:var(--teal);border-color:var(--cat-border);background:var(--cat-bg)}
 .field{display:grid;grid-template-columns:74px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-soft)}
 .field .k{font-size:12px;color:var(--dim);padding-top:2px}
 .field .v{font-size:13px;line-height:1.65;min-width:0;overflow-wrap:anywhere}
+.field .v .badge{margin:6px 8px 0 0}
 .conf{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:6px;margin-left:7px;vertical-align:1px}
 .c-hi{color:var(--ok);background:var(--ok-bg)}
 .c-mid{color:var(--amber);background:var(--amber-bg)}
@@ -255,7 +256,7 @@ html[data-page="login"] #admin-screen{display:none}
 .user-chip{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--dim)}
 .admin-main{position:relative;z-index:2;max-width:1000px;margin:24px auto;padding:0 44px}
 .admin-list{display:flex;flex-direction:column;gap:8px}
-.user-row{display:grid;grid-template-columns:1.2fr 1.8fr 100px auto;gap:12px;align-items:center;
+.user-row{display:grid;grid-template-columns:1.1fr 1.6fr 90px 100px auto;gap:12px;align-items:center;
   padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--ev-bg)}
 .user-main{font-size:13px;font-weight:600}
 .user-meta,.user-time{font-size:11.5px;color:var(--dim)}
@@ -278,3 +279,14 @@ textarea.edit-input{resize:vertical;line-height:1.5}
   .auth-card{padding:20px}
   .top-right{justify-content:flex-start}
 }
+
+.user-email{font-size:11.5px;color:var(--dim);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-count{font-size:11.5px;color:var(--dim);text-align:right}
+.user-actions{display:flex;gap:6px;justify-content:flex-end}
+.admin-detail{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--ev-bg)}
+.detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.detail-head b{font-size:13px}
+.detail-model{margin:8px 0;font-size:11.5px;line-height:1.6;color:var(--dim)}
+.detail-events{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.detail-event{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;
+  border:1px solid var(--line);border-radius:8px;font-size:12px}

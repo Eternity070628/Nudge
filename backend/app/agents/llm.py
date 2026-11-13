@@ -28,30 +28,39 @@ _disabled = off in ("1", "true", "yes", "on")
 _last: dict[str, Any] = {"ok": None, "status": 0, "error": "", "at": ""}
 
 
-def current() -> tuple[str, str, str]:
-    """返回 (base_url, model, api_key)；页面设置覆盖环境变量。"""
-    saved = db.get_settings()
-    base = (saved.get("base_url") or config.MAAS_BASE_URL).rstrip("/")
-    model = saved.get("model") or config.MAAS_MODEL
-    key = saved["api_key"] if "api_key" in saved else config.MAAS_API_KEY
+def current(user_id: str | None = None) -> tuple[str, str, str]:
+    """返回 (base_url, model, api_key)；用户设置 > 全局地址/模型 > 环境变量。
+
+    Key 只认用户自己的设置或环境变量，避免普通用户继承别人的全局 Key。
+    """
+    global_saved = db.get_settings()
+    user_saved = db.get_user_settings(user_id) if user_id else {}
+    base = (user_saved.get("base_url") or global_saved.get("base_url") or config.MAAS_BASE_URL).rstrip("/")
+    model = user_saved.get("model") or global_saved.get("model") or config.MAAS_MODEL
+    if user_id:
+        key = user_saved["api_key"] if "api_key" in user_saved else config.MAAS_API_KEY
+    else:
+        key = global_saved["api_key"] if "api_key" in global_saved else config.MAAS_API_KEY
     return base, model, key
 
 
-def current_model() -> str:
-    return current()[1]
+def current_model(user_id: str | None = None) -> str:
+    return current(user_id)[1]
 
 
-def mode() -> str:
-    """model / rules / auto —— 页面里显式选过的模式。"""
+def mode(user_id: str | None = None) -> str:
+    """model / rules / auto —— 用户显式选过的模式优先。"""
     try:
-        return (db.get_settings().get("llm_mode") or "").strip().lower()
+        global_saved = db.get_settings()
+        user_saved = db.get_user_settings(user_id) if user_id else {}
+        return (user_saved.get("llm_mode") or global_saved.get("llm_mode") or "").strip().lower()
     except Exception:
         return ""
 
 
-def available() -> bool:
-    base, _, key = current()
-    wanted = mode()
+def available(user_id: str | None = None) -> bool:
+    base, _, key = current(user_id)
+    wanted = mode(user_id)
     if wanted == "rules":
         return False
     if wanted == "model":
@@ -129,11 +138,12 @@ def _request(url: str, key: str, payload: dict[str, Any] | None, timeout: int) -
         return {"ok": False, "status": 0, "body": "", "error": str(exc)}
 
 
-def chat(system: str, user: str, temperature: float = 0.0, timeout: int = 60) -> str | None:
+def chat(system: str, user: str, temperature: float = 0.0, timeout: int = 60,
+         user_id: str | None = None) -> str | None:
     """调用 OpenAI 兼容接口。失败返回 None，不抛异常，但会记下 last_error。"""
-    if not available():
+    if not available(user_id):
         return None
-    base, model, key = current()
+    base, model, key = current(user_id)
     payload = {
         "model": model,
         "temperature": temperature,
@@ -152,9 +162,9 @@ def chat(system: str, user: str, temperature: float = 0.0, timeout: int = 60) ->
         return None
 
 
-def probe(kind: str = "chat", timeout: int = 30) -> dict[str, Any]:
+def probe(kind: str = "chat", timeout: int = 30, user_id: str | None = None) -> dict[str, Any]:
     """给页面「测试连接」用：真发一次最小请求，把状态码和报错原文摊开。"""
-    base, model, key = current()
+    base, model, key = current(user_id)
     if not base:
         return {"ok": False, "reason": "no_base_url", "model": model}
     if not key:

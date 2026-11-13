@@ -24,7 +24,7 @@ from .models import EventCreate, ExtractRequest
 from .services import ics, mailer
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="1.0.2")
+app = FastAPI(title="Nudge · 校园截止管家", version="1.1.0")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()
@@ -41,15 +41,15 @@ class SettingsUpdate(BaseModel):
     clear_key: bool = False
 
 
-def _public_settings() -> dict[str, Any]:
-    base, model, key = llm.current()
+def _public_settings(user_id: str) -> dict[str, Any]:
+    base, model, key = llm.current(user_id)
     return {
         "base_url": base,
         "model": model,
         "has_key": bool(key),
         "key_hint": ("****" + key[-4:]) if len(key) >= 4 else ("****" if key else ""),
-        "mode": llm.mode() or "auto",
-        "available": llm.available(),
+        "mode": llm.mode(user_id) or "auto",
+        "available": llm.available(user_id),
     }
 
 
@@ -90,35 +90,36 @@ def health() -> dict[str, Any]:
 
 @app.get("/api/settings")
 def api_settings(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    return _public_settings()
+    return _public_settings(user["id"])
 
 
 @app.post("/api/settings")
-def api_save_settings(body: SettingsUpdate, _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+def api_save_settings(body: SettingsUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     values: dict[str, str] = {}
     if body.base_url.strip():
         values["base_url"] = body.base_url.strip().rstrip("/")
     if body.model.strip():
         values["model"] = body.model.strip()
-    has_key = bool(db.get_settings().get("api_key")) or bool(body.api_key.strip())
+    current_base, _, current_key = llm.current(user["id"])
+    has_key = bool(current_key) or bool(body.api_key.strip())
     if body.clear_key:
         values["api_key"] = ""
         values["llm_mode"] = "auto"
     elif body.api_key.strip():
         values["api_key"] = body.api_key.strip()
-    # 在「模型设置」里点保存 = 我要用模型：只要有 Key 就覆盖部署环境的保守默认
+    # 在「模型设置」里点保存 = 当前用户要用模型
     values["llm_mode"] = "model" if has_key and not body.clear_key else "auto"
     if values:
-        db.save_settings(values)
-    return _public_settings()
+        db.save_user_settings(user["id"], values)
+    return _public_settings(user["id"])
 
 
 @app.get("/api/llm-test")
 def api_llm_test(kind: str = Query("chat", pattern="^(chat|models)$"),
-                 _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+                 user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """真发一次最小请求，把状态码与报错原文摊开——排查「为什么没调到模型」。"""
-    result = llm.probe(kind=kind)
-    result["mode"] = llm.mode() or "auto"
+    result = llm.probe(kind=kind, user_id=user["id"])
+    result["mode"] = llm.mode(user["id"]) or "auto"
     return result
 
 
@@ -132,7 +133,7 @@ def api_extract(req: ExtractRequest, user: dict[str, Any] = Depends(current_user
             anchor = datetime.fromisoformat(req.published_at).date()
         except ValueError:
             pass
-    draft = extractor.extract(req.text, anchor=anchor)
+    draft = extractor.extract(req.text, anchor=anchor, user_id=user["id"])
     draft.source.type = req.source_type  # type: ignore[assignment]
     draft.source.url = req.url
     draft = verifier.verify(req.text, draft)
@@ -238,7 +239,7 @@ def api_samples() -> list[dict[str, str]]:
 def api_seed(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     added = 0
     for s in SAMPLES:
-        draft = extractor.extract(s["text"])
+        draft = extractor.extract(s["text"], user_id=user["id"])
         draft = verifier.verify(s["text"], draft)
         rel, reasons = matcher.match(draft, user)
         _, created = db.save_event(draft, user["id"], rel, reasons)

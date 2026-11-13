@@ -38,6 +38,13 @@ CREATE TABLE IF NOT EXISTS email_codes (
   id TEXT PRIMARY KEY, email TEXT, purpose TEXT, code_hash TEXT,
   expires_at TEXT, used INTEGER DEFAULT 0, created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
 """
 
 ADMIN_EMAIL = "Eternity070628@bupt.edu.cn"
@@ -214,6 +221,26 @@ def save_settings(values: dict[str, str]) -> None:
             )
 
 
+def get_user_settings(user_id: str) -> dict[str, str]:
+    """每个用户自己的模型设置，覆盖全局设置。"""
+    try:
+        with conn() as c:
+            rows = c.execute("SELECT key, value FROM user_settings WHERE user_id=?", (user_id,)).fetchall()
+        return {r["key"]: r["value"] for r in rows}
+    except sqlite3.OperationalError:
+        return {}
+
+
+def save_user_settings(user_id: str, values: dict[str, str]) -> None:
+    with conn() as c:
+        for key, value in values.items():
+            c.execute(
+                "INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) "
+                "ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value",
+                (user_id, key, value),
+            )
+
+
 def get_user_by_email(email: str) -> Optional[dict[str, Any]]:
     with conn() as c:
         row = c.execute("SELECT * FROM users WHERE lower(email)=?", (email.strip().lower(),)).fetchone()
@@ -264,6 +291,7 @@ def delete_user(user_id: str) -> bool:
         c.execute("DELETE FROM user_events WHERE user_id=?", (user_id,))
         c.execute("DELETE FROM feedback WHERE user_id=?", (user_id,))
         c.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+        c.execute("DELETE FROM user_settings WHERE user_id=?", (user_id,))
         if row["email"]:
             c.execute("DELETE FROM email_codes WHERE email=?", (row["email"],))
         c.execute("DELETE FROM users WHERE id=?", (user_id,))

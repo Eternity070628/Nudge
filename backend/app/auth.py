@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from . import db
+from .agents import llm
 from .models import LoginRequest, RegisterRequest, ResetRequest, SendCodeRequest
 from .services import accounts, mailer
 
@@ -118,6 +119,20 @@ def api_demo(response: Response) -> dict[str, Any]:
 @admin_router.get("/users")
 def api_admin_users(_: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     return {"users": db.list_users()}
+
+
+@admin_router.get("/users/{user_id}/detail")
+def api_admin_user_detail(user_id: str, _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """管理员看某个用户的事件与模型配置；只返回是否有 Key，不返回 Key。"""
+    user = db.get_user(user_id)
+    if not user:
+        raise HTTPException(404, "用户不存在")
+    base, model, key = llm.current(user_id)
+    return {
+        "user": accounts.public_user(user),
+        "model": {"base_url": base, "model": model, "has_key": bool(key)},
+        "events": db.list_events(user_id),
+    }
 
 
 @admin_router.delete("/users/{user_id}")

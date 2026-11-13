@@ -77,7 +77,6 @@ function renderDraft(payload) {
 
   const badges = el("div", "rowline");
   badges.appendChild(el("span", "badge cat", CAT[d.category] || "其他"));
-  badges.appendChild(el("span", "badge", "重要性 " + d.importance + "/5"));
   badges.appendChild(el("span", "badge", "总体可信度 " + Math.round(d.overall_confidence * 100) + "%"));
   if (d.needs_review.length) badges.appendChild(el("span", "badge", "待确认 " + d.needs_review.length + " 项"));
   box.appendChild(badges);
@@ -466,7 +465,7 @@ function enterApp(user) {
   $("app-shell").classList.remove("hidden");
   $("user-name").textContent = user.name || user.email || "";
   $("admin-btn").classList.toggle("hidden", !user.is_admin);
-  $("settings-btn").classList.toggle("hidden", !user.is_admin);
+  $("settings-btn").classList.remove("hidden");
   startApp();
 }
 
@@ -479,8 +478,14 @@ async function loadAdminUsers() {
     data.users.forEach((u) => {
       const row = el("div", "user-row");
       row.appendChild(el("div", "user-main", (u.name || "未命名") + (u.is_admin ? " · 管理员" : "")));
-      row.appendChild(el("div", "user-meta", (u.email || "无邮箱") + " · " + (u.event_count || 0) + " 个事件"));
+      row.appendChild(el("div", "user-email", u.email || "无邮箱"));
+      row.appendChild(el("div", "user-count", (u.event_count || 0) + " 个事件"));
       row.appendChild(el("div", "user-time", (u.created_at || "").slice(0, 10)));
+      const actions = el("div", "user-actions");
+      const view = el("button", "btn ghost btn-mini", "查看");
+      view.type = "button";
+      view.onclick = () => loadAdminDetail(u.id);
+      actions.appendChild(view);
       if (!u.is_admin && u.id !== "u_demo") {
         const remove = el("button", "btn ghost btn-mini", "删除");
         remove.type = "button";
@@ -489,14 +494,51 @@ async function loadAdminUsers() {
           try { await api("/api/admin/users/" + u.id, { method: "DELETE" }); loadAdminUsers(); }
           catch (e) { alert(e.message); }
         };
-        row.appendChild(remove);
-      } else {
-        row.appendChild(el("span", "user-time", "内置账号"));
+        actions.appendChild(remove);
       }
+      row.appendChild(actions);
       box.appendChild(row);
     });
   } catch (e) {
     $("admin-count").textContent = e.message;
+  }
+}
+
+async function loadAdminDetail(userId) {
+  const box = $("admin-detail");
+  try {
+    const data = await api("/api/admin/users/" + userId + "/detail");
+    box.classList.remove("hidden");
+    box.innerHTML = "";
+    const head = el("div", "detail-head");
+    head.appendChild(el("b", null, data.user.name || "未命名"));
+    head.appendChild(el("span", "tiny", data.user.email || "无邮箱"));
+    const close = el("button", "btn ghost btn-mini", "关闭");
+    close.type = "button";
+    close.onclick = () => box.classList.add("hidden");
+    head.appendChild(close);
+    box.appendChild(head);
+    const model = el("div", "detail-model");
+    model.textContent = "模型：" + (data.model.model || "未配置")
+      + " · 接口：" + (data.model.base_url || "未配置")
+      + " · Key：" + (data.model.has_key ? "已配置（不显示）" : "未配置");
+    box.appendChild(model);
+    const list = el("div", "detail-events");
+    if (!data.events.length) {
+      list.appendChild(el("div", "tiny", "这个用户还没有事件。"));
+    } else {
+      data.events.forEach((e) => {
+        const item = el("div", "detail-event");
+        item.appendChild(el("span", null, e.title || "未命名事件"));
+        item.appendChild(el("span", "tiny",
+          (e.deadline_end || "未识别").slice(0, 16) + (e.done_at ? " · 已完成" : "")));
+        list.appendChild(item);
+      });
+    }
+    box.appendChild(list);
+  } catch (e) {
+    box.classList.remove("hidden");
+    box.textContent = e.message;
   }
 }
 
