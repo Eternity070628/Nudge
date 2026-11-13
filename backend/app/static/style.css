@@ -233,9 +233,6 @@ html[data-page="login"] #admin-screen{display:none}
 .auth-tabs{display:flex;gap:4px;margin:18px 0 8px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--chip-bg)}
 .auth-tab{flex:1;padding:8px;border:0;border-radius:8px;background:transparent;color:var(--dim);font:inherit;font-size:12px;cursor:pointer}
 .auth-tab.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
-.auth-mail{min-height:16px;margin:2px 0 0;font-size:11px;line-height:1.5;color:var(--dim)}
-.auth-mail[data-mode="dev"]{color:#c98a2a}
-.auth-mail[data-mode="unconfigured"]{color:#c05b5b}
 .auth-form label{display:block;margin-top:12px;font-size:12px;color:var(--dim)}
 .auth-form input{width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
   background:var(--input);color:var(--ink);font:inherit;font-size:13px;outline:none}
@@ -248,7 +245,13 @@ html[data-page="login"] #admin-screen{display:none}
 .code-btn{flex:none;padding:8px 10px;font-size:11.5px}
 .auth-submit{width:100%;margin-top:14px}
 .auth-status{min-height:18px;margin:10px 0 0;font-size:11.5px;color:var(--dim)}
-.auth-note{margin:16px 0 0;padding-top:12px;border-top:1px solid var(--line);font-size:11px;line-height:1.6;color:var(--dim)}
+.auth-status.error{padding:9px 11px;border:1px solid rgba(255,107,107,.45);border-radius:9px;
+  background:rgba(255,107,107,.1);color:var(--red);font-weight:600;line-height:1.5}
+.auth-status.error::before{content:"⚠ ";font-weight:700}
+.auth-status.success{padding:9px 11px;border:1px solid rgba(74,222,128,.35);border-radius:9px;
+  background:var(--ok-bg);color:var(--ok);font-weight:600}
+.auth-status.info{padding:9px 11px;border:1px solid rgba(247,178,103,.28);border-radius:9px;
+  background:var(--amber-bg);color:var(--amber)}
 .user-chip{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--dim)}
 .admin-main{position:relative;z-index:2;max-width:1000px;margin:24px auto;padding:0 44px}
 .admin-list{display:flex;flex-direction:column;gap:8px}

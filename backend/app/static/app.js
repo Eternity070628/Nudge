@@ -534,9 +534,20 @@ function startCountdown(button) {
   }, 1000);
 }
 
+function setAuthStatus(target, message, type = "") {
+  const node = typeof target === "string" ? $(target) : target;
+  if (!node) return;
+  node.textContent = message;
+  node.classList.remove("error", "success", "info");
+  if (type) node.classList.add(type);
+}
+
 async function sendCode(emailId, purpose, statusId, button) {
   const email = $(emailId).value.trim();
-  if (!email) { $(statusId).textContent = "先填邮箱"; return; }
+  if (!email) {
+    setAuthStatus(statusId, "请先填写邮箱，再发送验证码", "error");
+    return;
+  }
   button.disabled = true;
   button.textContent = "发送中…";
   try {
@@ -545,18 +556,21 @@ async function sendCode(emailId, purpose, statusId, button) {
       body: JSON.stringify({ email, purpose }),
     });
     if (data.dev) {
-      $(statusId).textContent =
-        (data.notice || "开发模式：未真实发信") +
-        (data.dev_code ? "，验证码 " + data.dev_code + "（已填入）" : "，请查看服务端日志");
+      const notice = data.notice || "开发模式：未真实发信";
+      setAuthStatus(
+        statusId,
+        notice + (data.dev_code ? "，验证码 " + data.dev_code + "（已填入）" : "，请查看服务端日志"),
+        "info"
+      );
       if (data.dev_code) {
         $(purpose === "register" ? "register-code" : "reset-code").value = data.dev_code;
       }
     } else {
-      $(statusId).textContent = "验证码已发送到 " + email + "，10 分钟内有效";
+      setAuthStatus(statusId, "验证码已发送到 " + email + "，10 分钟内有效", "success");
     }
     startCountdown(button);
   } catch (e) {
-    $(statusId).textContent = e.message;
+    setAuthStatus(statusId, "发送失败：" + e.message, "error");
     button.disabled = false;
     button.textContent = "发送验证码";
   }
@@ -565,7 +579,7 @@ async function sendCode(emailId, purpose, statusId, button) {
 async function handleLogin(event) {
   event.preventDefault();
   const status = $("login-status");
-  status.textContent = "登录中…";
+  setAuthStatus(status, "登录中…", "info");
   try {
     const data = await api("/api/auth/login", {
       method: "POST",
@@ -574,59 +588,71 @@ async function handleLogin(event) {
     if (data.user.is_admin) location.href = "/admin";
     else location.href = "/app";
   } catch (e) {
-    status.textContent = e.message;
+    setAuthStatus(status, "登录失败：" + e.message, "error");
   }
 }
 
 async function handleRegister(event) {
   event.preventDefault();
   const status = $("register-status");
-  status.textContent = "注册中…";
+  const password = $("register-password").value;
+  const confirm = $("register-confirm").value;
+  if (password !== confirm) {
+    setAuthStatus(status, "两次输入的密码不一致，已拒绝注册", "error");
+    return;
+  }
+  setAuthStatus(status, "注册中…", "info");
   try {
-    const data = await api("/api/auth/register", {
+    await api("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({
         nickname: $("register-name").value.trim(),
         email: $("register-email").value.trim(),
-        password: $("register-password").value,
-        confirm: $("register-confirm").value,
+        password,
+        confirm,
         code: $("register-code").value.trim(),
       }),
     });
     location.href = "/app";
   } catch (e) {
-    status.textContent = e.message;
+    setAuthStatus(status, "注册失败：" + e.message, "error");
   }
 }
 
 async function handleReset(event) {
   event.preventDefault();
   const status = $("reset-status");
-  status.textContent = "重置中…";
+  const password = $("reset-password").value;
+  const confirm = $("reset-confirm").value;
+  if (password !== confirm) {
+    setAuthStatus(status, "两次输入的密码不一致，已拒绝重置密码", "error");
+    return;
+  }
+  setAuthStatus(status, "重置中…", "info");
   try {
     await api("/api/auth/reset", {
       method: "POST",
       body: JSON.stringify({
         email: $("reset-email").value.trim(),
         code: $("reset-code").value.trim(),
-        password: $("reset-password").value,
-        confirm: $("reset-confirm").value,
+        password,
+        confirm,
       }),
     });
     $("login-email").value = $("reset-email").value.trim();
-    status.textContent = "密码已重置，请登录";
+    setAuthStatus(status, "密码已重置，请使用新密码登录", "success");
     switchAuthTab("login");
   } catch (e) {
-    status.textContent = e.message;
+    setAuthStatus(status, "重置失败：" + e.message, "error");
   }
 }
 
 async function handleDemo() {
   try {
-    const data = await api("/api/auth/demo", { method: "POST", body: JSON.stringify({}) });
+    await api("/api/auth/demo", { method: "POST", body: JSON.stringify({}) });
     location.href = "/app";
   } catch (e) {
-    $("login-status").textContent = e.message;
+    setAuthStatus("login-status", "演示账号登录失败：" + e.message, "error");
   }
 }
 
@@ -635,31 +661,8 @@ async function handleLogout() {
   location.href = "/";
 }
 
-async function loadMailStatus() {
-  const node = $("auth-mail");
-  if (!node) return;
-  try {
-    const s = await api("/api/auth/mail-status");
-    if (s.mode === "graph") {
-      node.textContent = "验证码由 " + s.sender + " 通过 Microsoft Graph 真实发出";
-    } else if (s.mode === "brevo") {
-      node.textContent = "验证码由 " + s.sender + " 通过 Brevo 邮件服务真实发出";
-    } else if (s.mode === "smtp") {
-      node.textContent = "验证码由 " + s.sender + " 通过邮箱 SMTP 真实发出";
-    } else if (s.mode === "dev") {
-      node.textContent = "开发模式：未真实发信，验证码只显示在本页和服务端日志";
-    } else {
-      node.textContent = "邮箱服务未授权：注册 / 重置密码暂不可用";
-    }
-    node.dataset.mode = s.mode || "";
-  } catch (e) {
-    node.textContent = "";
-  }
-}
-
 async function initAuth() {
   const path = location.pathname;
-  loadMailStatus();
   try {
     const data = await api("/api/auth/me");
     if (path === "/") {
