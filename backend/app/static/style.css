@@ -233,6 +233,9 @@ html[data-page="login"] #admin-screen{display:none}
 .auth-tabs{display:flex;gap:4px;margin:18px 0 8px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--chip-bg)}
 .auth-tab{flex:1;padding:8px;border:0;border-radius:8px;background:transparent;color:var(--dim);font:inherit;font-size:12px;cursor:pointer}
 .auth-tab.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+.auth-mail{min-height:16px;margin:2px 0 0;font-size:11px;line-height:1.5;color:var(--dim)}
+.auth-mail[data-mode="dev"]{color:#c98a2a}
+.auth-mail[data-mode="unconfigured"]{color:#c05b5b}
 .auth-form label{display:block;margin-top:12px;font-size:12px;color:var(--dim)}
 .auth-form input{width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
   background:var(--input);color:var(--ink);font:inherit;font-size:13px;outline:none}

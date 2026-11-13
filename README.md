@@ -57,9 +57,10 @@ nudge/
 ├─ backend/
 │  ├─ app/
 │  │  ├─ main.py            # FastAPI 路由
+│  │  ├─ auth.py            # 登录 / 注册 / 重置 / 会话 / 管理员
 │  │  ├─ models.py          # Pydantic 契约（事件 JSON 就是 API 契约）
-│  │  ├─ db.py              # SQLite：users / events / user_events / feedback
-│  │  ├─ config.py          # MaaS 配置、提醒天数、负载阈值
+│  │  ├─ db.py              # SQLite：users / events / feedback / settings
+│  │  ├─ config.py          # .env 读取、MaaS 配置、Graph 邮箱配置
 │  │  ├─ agents/
 │  │  │  ├─ extractor.py    # 规则抽取 + 可选 LLM 兜底
 │  │  │  ├─ verifier.py     # 证据校验 + 置信度聚合
@@ -67,6 +68,8 @@ nudge/
 │  │  │  ├─ planner.py      # 紧急度 / checklist / 提醒 / 撞车
 │  │  │  └─ llm.py          # DeepSeek OpenAI 兼容接口
 │  │  ├─ services/
+│  │  │  ├─ accounts.py     # 口令哈希、会话、验证码发放与消费
+│  │  │  ├─ mailer.py       # Microsoft Graph 发信 + 设备码授权 CLI
 │  │  │  ├─ seed.py         # 6 条真实感示例通知
 │  │  │  └─ ics.py          # 导出 .ics 日历订阅
 │  │  └─ static/            # 单页前端（原生 JS，零构建）
@@ -110,7 +113,25 @@ nudge/
 
 进入站点先登录。支持邮箱+密码登录、昵称/邮箱/密码/验证码注册、邮箱验证码重置密码；密码框可切换明文查看。登录成功后跳转到独立的 `/app` 或 `/admin` 页面，不和登录表单共用一个滚动页；管理员邮箱登录自动进入管理端，可查看和删除用户；删除用户会清理其事件、反馈和会话。
 
-验证码走 Microsoft Graph 设备码授权，发件邮箱为 `Eternity070628@outlook.com`。服务器设置 `GRAPH_TENANT_ID`、`GRAPH_CLIENT_ID` 后运行 `python -m app.services.mailer auth` 完成一次授权，refresh token 存本机 SQLite，不进仓库。本地没有 Graph 凭据时可用 `NUDGE_EMAIL_DEV=1`，验证码会显示在页面并明确标注开发模式。
+验证码由 `Eternity070628@outlook.com` 本人通过 **Microsoft Graph** 发出（`POST /v1.0/me/sendMail`）。为什么不是 SMTP：Outlook 个人账户自 2024-09-16 起停用 SMTP 基本认证，应用专用密码同样失效，而且不少校园网封出站 587/465；Graph 走 HTTPS 443，发件人、签名和「已发送」文件夹都对得上。
+
+三步接入：
+
+```bash
+cp .env.example .env                     # 至少确认 GRAPH_SENDER
+cd backend
+python -m app.services.mailer auth       # 打印 8 位代码，用该邮箱打开 https://www.microsoft.com/link 同意一次
+python -m app.services.mailer status     # mode=graph、real_sending=true 就说明真能发信了
+```
+
+- 默认客户端是微软官方发布的公共客户端「Microsoft Graph Command Line Tools」，已允许设备码流，个人账户可直接授权，**不必自己注册 Entra 应用**；要用自己的应用就覆盖 `GRAPH_CLIENT_ID`。
+- 已有 refresh token 时用 `python -m app.services.mailer auth --import-token "M.C5..."` 直接写入；或把 token 放进 `GRAPH_REFRESH_TOKEN`，启动时自动写入本机 SQLite（部署到临时文件系统的机器用这条）。
+- 令牌只存在 `backend/data/nudge.db` 的 settings 表；`.env` 与数据库都已 gitignore，都不进仓库。每次刷新微软会换发新 token，代码会自动回写。
+- 前端用 `GET /api/auth/mail-status` 显示当前是 `graph`（真发信）/ `dev`（开发模式）/ `unconfigured`（未授权），不让「看起来发了、其实没发」混过去。
+- 微软故障时接口返回 **503** 并写明「Microsoft Graph 暂时不可用（HTTP 502），这是微软侧故障，不是配置问题」；此时可临时 `NUDGE_EMAIL_DEV=1` 走开发模式。
+- 开发模式：验证码回显到页面和服务端日志，并明确标注「未真实发信」，不会伪造发送成功。
+
+![登录页发信状态](docs/login-mail-status.png)
 
 保留 `u_demo` 公开演示账号，登录页有「进入公开演示账号」；新注册用户从空看板开始。登录态使用 HttpOnly Cookie session；密码只存 PBKDF2 哈希。
 

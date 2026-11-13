@@ -544,11 +544,15 @@ async function sendCode(emailId, purpose, statusId, button) {
       method: "POST",
       body: JSON.stringify({ email, purpose }),
     });
-    if (data.dev && data.dev_code) {
-      $(statusId).textContent = "开发模式验证码：" + data.dev_code + "（仅本地显示）";
-      $(purpose === "register" ? "register-code" : "reset-code").value = data.dev_code;
+    if (data.dev) {
+      $(statusId).textContent =
+        (data.notice || "开发模式：未真实发信") +
+        (data.dev_code ? "，验证码 " + data.dev_code + "（已填入）" : "，请查看服务端日志");
+      if (data.dev_code) {
+        $(purpose === "register" ? "register-code" : "reset-code").value = data.dev_code;
+      }
     } else {
-      $(statusId).textContent = "验证码已发送，10 分钟内有效";
+      $(statusId).textContent = "验证码已发送到 " + email + "，10 分钟内有效";
     }
     startCountdown(button);
   } catch (e) {
@@ -631,8 +635,27 @@ async function handleLogout() {
   location.href = "/";
 }
 
+async function loadMailStatus() {
+  const node = $("auth-mail");
+  if (!node) return;
+  try {
+    const s = await api("/api/auth/mail-status");
+    if (s.mode === "graph") {
+      node.textContent = "验证码由 " + s.sender + " 通过 Microsoft Graph 真实发出";
+    } else if (s.mode === "dev") {
+      node.textContent = "开发模式：未真实发信，验证码只显示在本页和服务端日志";
+    } else {
+      node.textContent = "邮箱服务未授权：注册 / 重置密码暂不可用";
+    }
+    node.dataset.mode = s.mode || "";
+  } catch (e) {
+    node.textContent = "";
+  }
+}
+
 async function initAuth() {
   const path = location.pathname;
+  loadMailStatus();
   try {
     const data = await api("/api/auth/me");
     if (path === "/") {

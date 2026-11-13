@@ -21,13 +21,15 @@ from .agents import extractor, llm, matcher, planner, verifier
 from .auth import admin_router, current_user, require_admin, router as auth_router
 from .config import BASE_DIR
 from .models import EventCreate, ExtractRequest
-from .services import ics
+from .services import ics, mailer
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="1.0.1")
+app = FastAPI(title="Nudge · 校园截止管家", version="1.1.0")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()
+# 部署到新机器时，环境变量里的 refresh token 会在启动时落进本机数据库
+mailer.ensure_token()
 app.include_router(auth_router)
 app.include_router(admin_router)
 
@@ -79,6 +81,8 @@ def health() -> dict[str, Any]:
         "mode": llm.mode() or "auto",
         "model": llm.current_model(),
         "llm_error": llm.last_error(),
+        # graph / dev / unconfigured：一眼看出验证码是真发信还是开发模式
+        "mail": mailer.status()["mode"],
         "commit": _commit(),
         "time": datetime.now().isoformat(timespec="seconds"),
     }

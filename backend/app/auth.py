@@ -81,7 +81,17 @@ def api_send_code(body: SendCodeRequest) -> dict[str, Any]:
         "dev": result["dev"],
         "dev_code": result["code"] if result["dev"] else "",
         "expires_in": result["expires_in"],
+        "notice": (
+            "开发模式：未真实发信，验证码只显示在本页和服务端日志"
+            if result["dev"] else ""
+        ),
     }
+
+
+@router.get("/mail-status")
+def api_mail_status() -> dict[str, Any]:
+    """前端用来诚实展示「真发信 / 开发模式 / 未授权」，不暴露令牌。"""
+    return mailer.status()
 
 
 @router.post("/logout")
