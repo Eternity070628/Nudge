@@ -19,10 +19,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import smtplib
+import ssl
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from email.message import EmailMessage
+from email.utils import formataddr
 
 from .. import config, db
 
@@ -139,24 +143,92 @@ def _access_token() -> str:
     return result["access_token"]
 
 
+def _mail_text(action: str, code: str) -> str:
+    return (
+        f"你的 Nudge {action}验证码是 {code}，10 分钟内有效。\n"
+        f"如果不是你本人操作，请忽略这封邮件。\n\n"
+        f"—— Nudge · 校园截止管家"
+    )
+
+
+def _smtp_configured() -> bool:
+    return bool(config.SMTP_USER and config.SMTP_PASS)
+
+
+def _smtp_send(to_email: str, subject: str, text: str) -> None:
+    """用邮箱自己的 SMTP 发信（学校/企业邮箱如腾讯企业邮）。"""
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr((config.SMTP_SENDER_NAME, config.SMTP_SENDER))
+    message["To"] = to_email
+    message.set_content(text)
+
+    host, port = config.SMTP_HOST, config.SMTP_PORT
+    context = ssl.create_default_context()
+    if not config.SMTP_VERIFY_TLS:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    try:
+        if config.SMTP_SECURITY == "ssl":
+            server = smtplib.SMTP_SSL(host, port, timeout=25, context=context)
+        else:
+            server = smtplib.SMTP(host, port, timeout=25)
+            if config.SMTP_SECURITY == "starttls":
+                server.starttls(context=context)
+    except ssl.SSLCertVerificationError as error:
+        raise MailError(
+            f"SMTP 证书校验失败（{host}）：{error}。"
+            "通常是主机名和证书不匹配，改用服务商的标准主机名"
+            "（腾讯企业邮用 smtp.exmail.qq.com）；"
+            "确知安全时也可在 .env 里设 SMTP_VERIFY_TLS=0 临时跳过。"
+        ) from error
+    except OSError as error:
+        raise MailError(
+            f"SMTP 连不上 {host}:{port}：{error}。检查网络是否放行该端口，"
+            "或换 SMTP_SECURITY=starttls / SMTP_PORT=587。"
+        ) from error
+    except smtplib.SMTPException as error:
+        raise MailError(f"SMTP 握手失败（{host}:{port}）：{error}") from error
+
+    try:
+        server.login(config.SMTP_USER, config.SMTP_PASS)
+    except smtplib.SMTPAuthenticationError as error:
+        raise MailError(
+            "SMTP 认证失败：账号或密码不对。腾讯企业邮/学校邮箱通常要先去邮箱设置里"
+            "开启 SMTP 并生成「客户端专用密码」，用它填 SMTP_PASS。"
+        ) from error
+    except smtplib.SMTPException as error:
+        raise MailError(f"SMTP 登录失败：{error}") from error
+    try:
+        server.send_message(message)
+    except smtplib.SMTPRecipientsRefused as error:
+        raise MailError(f"收件地址被拒绝：{error}") from error
+    except smtplib.SMTPException as error:
+        raise MailError(f"SMTP 发信失败：{error}") from error
+    finally:
+        try:
+            server.quit()
+        except Exception:
+            pass
+
+
 def send_code(to_email: str, code: str, purpose: str) -> dict:
     """发送验证码；开发模式返回 dev=True，由接口决定是否回显。"""
     if config.NUDGE_EMAIL_DEV:
         print(f"[DEV] 未真实发信，验证码 {code} -> {to_email}")
         return {"dev": True}
-    token = _access_token()
     action = "注册" if purpose == "register" else "重置密码"
+    subject = f"Nudge {action}验证码"
+    text = _mail_text(action, code)
+    if status()["mode"] == "smtp":
+        _smtp_send(to_email, subject, text)
+        return {"dev": False}
+
+    token = _access_token()
     payload = {
         "message": {
-            "subject": f"Nudge {action}验证码",
-            "body": {
-                "contentType": "Text",
-                "content": (
-                    f"你的 Nudge {action}验证码是 {code}，10 分钟内有效。\n"
-                    f"如果不是你本人操作，请忽略这封邮件。\n\n"
-                    f"—— Nudge · 校园截止管家"
-                ),
-            },
+            "subject": subject,
+            "body": {"contentType": "Text", "content": text},
             "toRecipients": [{"emailAddress": {"address": to_email}}],
             # 发件箱里能看到自己发出的验证码，答辩时可以现场翻给对方看
             "saveToSentItems": True,
@@ -167,18 +239,33 @@ def send_code(to_email: str, code: str, purpose: str) -> dict:
 
 
 def status() -> dict:
-    """给前端/运维看的真实状态：现在是真发信、开发模式，还是缺授权。"""
+    """给前端/运维看的真实状态：真发信走哪条通道、还是开发模式 / 缺配置。"""
     authorized = bool(_stored_token())
-    if config.NUDGE_EMAIL_DEV:
+    smtp_ready = _smtp_configured()
+    transport = config.MAIL_TRANSPORT
+    if config.NUDGE_EMAIL_DEV or transport == "dev":
         mode = "dev"
+    elif transport == "smtp":
+        mode = "smtp" if smtp_ready else "unconfigured"
+    elif transport == "graph":
+        mode = "graph" if authorized else "unconfigured"
+    elif smtp_ready:  # auto：有 SMTP 凭据就优先它，学校邮箱通常更稳
+        mode = "smtp"
     elif authorized:
         mode = "graph"
     else:
         mode = "unconfigured"
     return {
         "mode": mode,
-        "real_sending": mode == "graph",
-        "sender": config.GRAPH_SENDER,
+        "transport": transport,
+        "real_sending": mode in ("smtp", "graph"),
+        "sender": config.SMTP_SENDER if mode == "smtp" else config.GRAPH_SENDER,
+        "smtp": {
+            "host": config.SMTP_HOST,
+            "port": config.SMTP_PORT,
+            "security": config.SMTP_SECURITY,
+            "user": config.SMTP_USER,
+        },
         "tenant": config.GRAPH_TENANT_ID,
         "client_id": config.GRAPH_CLIENT_ID,
         "authorized": authorized,

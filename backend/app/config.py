@@ -62,6 +62,24 @@ GRAPH_REFRESH_TOKEN = os.getenv("GRAPH_REFRESH_TOKEN", "").strip()
 # 开发模式：没有可用凭据时把验证码回显到页面/日志，并明确标注「未真实发信」
 NUDGE_EMAIL_DEV = os.getenv("NUDGE_EMAIL_DEV", "").strip().lower() in ("1", "true", "yes", "on")
 
+# ---------------------------------------------------------------------------
+# 邮箱验证码（第二条通道）：SMTP。
+# 学校/企业邮箱（如北邮学生邮箱，后端是腾讯企业邮）自带 SMTP，配好就能发，
+# 不依赖微软 Graph。凭据同样只从环境变量 / .env 读，不写进代码和仓库。
+# MAIL_TRANSPORT=auto 时：有 SMTP 凭据就优先 SMTP，否则退回 Graph，再否则开发模式。
+# ---------------------------------------------------------------------------
+MAIL_TRANSPORT = os.getenv("MAIL_TRANSPORT", "auto").strip().lower()  # auto | smtp | graph | dev
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.exmail.qq.com").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465") or 465)
+SMTP_SECURITY = os.getenv("SMTP_SECURITY", "ssl").strip().lower()  # ssl | starttls | none
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASS = os.getenv("SMTP_PASS", "").strip()
+# 发件地址默认等于登录账号；腾讯企业邮要求 From 与登录账号一致
+SMTP_SENDER = os.getenv("SMTP_SENDER", "").strip() or SMTP_USER or GRAPH_SENDER
+SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "Nudge").strip()
+# 自建/别名主机名证书不匹配时，可临时设 0（默认严格校验）
+SMTP_VERIFY_TLS = os.getenv("SMTP_VERIFY_TLS", "1").strip().lower() in ("1", "true", "yes", "on")
+
 TZ = "Asia/Shanghai"
 
 # 提醒策略：截止前 N 天

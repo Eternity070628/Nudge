@@ -131,6 +131,25 @@ python -m app.services.mailer status     # mode=graph、real_sending=true 就说
 - 微软故障时接口返回 **503** 并写明「Microsoft Graph 暂时不可用（HTTP 502），这是微软侧故障，不是配置问题」；此时可临时 `NUDGE_EMAIL_DEV=1` 走开发模式。
 - 开发模式：验证码回显到页面和服务端日志，并明确标注「未真实发信」，不会伪造发送成功。
 
+### 6.1.1 用学校邮箱 SMTP 发信（北邮学生邮箱实测可用）
+
+学校发的学生邮箱（如 `2025212080@bupt.cn`）后端是腾讯企业邮，`smtp.exmail.qq.com:465` 在本机可直接连、证书有效，配好就能发，完全绕开微软那条线：
+
+```bash
+MAIL_TRANSPORT=auto
+SMTP_HOST=smtp.exmail.qq.com
+SMTP_PORT=465
+SMTP_SECURITY=ssl
+SMTP_USER=2025212080@bupt.cn
+SMTP_PASS=<邮箱设置里开启 SMTP 后生成的客户端专用密码>
+SMTP_SENDER=2025212080@bupt.cn
+```
+
+- 先在邮箱网页版的「设置 → 账户/安全 → 客户端设置」里开启 SMTP 服务，密码用生成的**客户端专用密码**，不是网页登录密码。
+- `MAIL_TRANSPORT=auto` 的选择顺序：有 SMTP 凭据 → SMTP；否则有 Graph 令牌 → Graph；否则开发模式。
+- `GET /api/auth/mail-status` 的 `mode` 会变成 `smtp`，登录页文案同步变成「通过邮箱 SMTP 真实发出」。
+- `smtp.bupt.cn` 也能连，但它复用腾讯的证书、主机名对不上，严格校验会被拒；直接写标准主机名 `smtp.exmail.qq.com`。
+
 ![登录页发信状态](docs/login-mail-status.png)
 
 保留 `u_demo` 公开演示账号，登录页有「进入公开演示账号」；新注册用户从空看板开始。登录态使用 HttpOnly Cookie session；密码只存 PBKDF2 哈希。

@@ -642,6 +642,8 @@ async function loadMailStatus() {
     const s = await api("/api/auth/mail-status");
     if (s.mode === "graph") {
       node.textContent = "验证码由 " + s.sender + " 通过 Microsoft Graph 真实发出";
+    } else if (s.mode === "smtp") {
+      node.textContent = "验证码由 " + s.sender + " 通过邮箱 SMTP 真实发出";
     } else if (s.mode === "dev") {
       node.textContent = "开发模式：未真实发信，验证码只显示在本页和服务端日志";
     } else {
