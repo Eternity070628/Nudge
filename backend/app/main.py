@@ -23,7 +23,7 @@ from .models import EventCreate, ExtractRequest
 from .services import ics
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="0.1.2")
+app = FastAPI(title="Nudge · 校园截止管家", version="0.1.3")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()

@@ -101,12 +101,16 @@ nudge/
 
 默认配置指向 DeepSeek：
 - 接入地址：`https://api.deepseek.com`
-- 模型：`deepseek-v4.1-flash`
+- 模型：`deepseek-flash`（`/v1/models` 实际返回的可用 id；早期 `deepseek-v4.1-flash` 不被接口接受）
 - API Key：不写进仓库。首次使用点页面右上角「模型设置」填写；也可以设置环境变量 `MAAS_API_KEY`。
 
 没有 Key 时自动回退纯规则，页面状态显示「规则模式」。填写后 `/api/health` 的 `llm` 变为 `true`，抽取走「规则 + 模型补充」，模型输出仍要过 `verifier` 的逐字证据校验。Key 只保存在本机 `backend/data/nudge.db`（已 gitignore），不会进入 release 源码包；这是单机演示的本地明文存储，生产环境应改用密钥管理服务。
 
-## 7. 线上部署
+## 7. 主题
+
+右上角「跟随系统 / 浅色 / 深色」三档；选择存浏览器 `localStorage`，刷新后保留。颜色走 `:root` 深色变量与 `[data-theme="light"]` 浅色变量；跟随系统时用 `prefers-color-scheme`，不需要刷新。
+
+## 8. 线上部署
 
 线上运行地址：**https://eternity0628.pythonanywhere.com** （PythonAnywhere 免费计划）
 
@@ -118,7 +122,7 @@ nudge/
 - 线上是 PythonAnywhere 免费帐号。启动脚本里 `NUDGE_DISABLE_LLM=1` 只是「还没配 Key 时的保守默认」；页面「模型设置」存了 Key 就以页面为准（`llm_mode=model`），`/api/health` 的 `llm` 变 `true`。实测 `api.deepseek.com` 在 PA 可出网（返回 401 = 连通），`api.modelarts-maas.com` 会被 403 拦
 - 排查模型问题优先用 `GET /api/llm-test?kind=models`：能拿到模型列表说明 Key 与地址都对，只剩模型名要换
 
-## 8. 已知限制
+## 9. 已知限制
 
 - 截图 OCR 依赖外部 OCR 服务，当前 Demo 只做文本入口（接口已预留 source_type=image）。
 - 用户画像目前是写死的示例用户，接学校统一身份后应改为登录态。

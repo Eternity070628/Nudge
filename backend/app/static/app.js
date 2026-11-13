@@ -336,6 +336,14 @@ async function demoMode() {
   } catch (e) {}
 }
 
+const themeSelect = $("theme-select");
+themeSelect.value = document.documentElement.dataset.theme || "system";
+themeSelect.onchange = () => {
+  const theme = themeSelect.value;
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem("nudge-theme", theme); } catch (e) {}
+};
+
 $("settings-btn").onclick = openSettings;
 $("setting-cancel").onclick = () => $("settings-dialog").close();
 $("setting-test").onclick = testConnection;

@@ -4,6 +4,16 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Nudge · 校园截止管家</title>
+<script>
+(() => {
+  try {
+    const v = localStorage.getItem("nudge-theme");
+    document.documentElement.dataset.theme = ["system", "light", "dark"].includes(v) ? v : "system";
+  } catch (e) {
+    document.documentElement.dataset.theme = "system";
+  }
+})();
+</script>
 <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -18,6 +28,11 @@
     </div>
   </div>
   <div class="top-right">
+    <select id="theme-select" class="theme-select" aria-label="主题">
+      <option value="system">跟随系统</option>
+      <option value="light">浅色</option>
+      <option value="dark">深色</option>
+    </select>
     <button class="btn ghost btn-mini" id="settings-btn" type="button">模型设置</button>
     <div class="engine" id="engine">检测引擎中…</div>
   </div>
