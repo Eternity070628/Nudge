@@ -28,11 +28,17 @@
     </div>
   </div>
   <div class="top-right">
-    <select id="theme-select" class="theme-select" aria-label="主题">
-      <option value="system">跟随系统</option>
-      <option value="light">浅色</option>
-      <option value="dark">深色</option>
-    </select>
+    <div class="theme-picker" id="theme-picker">
+    <button class="theme-trigger" id="theme-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="主题">
+      <span id="theme-label">跟随系统</span>
+      <span class="chevron" aria-hidden="true">▾</span>
+    </button>
+    <div class="theme-menu" id="theme-menu" role="listbox" aria-label="主题" hidden>
+      <button class="theme-option" type="button" role="option" data-theme="system" aria-selected="true">跟随系统</button>
+      <button class="theme-option" type="button" role="option" data-theme="light" aria-selected="false">浅色</button>
+      <button class="theme-option" type="button" role="option" data-theme="dark" aria-selected="false">深色</button>
+    </div>
+  </div>
     <button class="btn ghost btn-mini" id="settings-btn" type="button">模型设置</button>
     <div class="engine" id="engine">检测引擎中…</div>
   </div>

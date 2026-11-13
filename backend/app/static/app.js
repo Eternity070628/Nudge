@@ -336,13 +336,76 @@ async function demoMode() {
   } catch (e) {}
 }
 
-const themeSelect = $("theme-select");
-themeSelect.value = document.documentElement.dataset.theme || "system";
-themeSelect.onchange = () => {
-  const theme = themeSelect.value;
-  document.documentElement.dataset.theme = theme;
-  try { localStorage.setItem("nudge-theme", theme); } catch (e) {}
+const themePicker = $("theme-picker");
+const themeTrigger = $("theme-trigger");
+const themeMenu = $("theme-menu");
+const themeLabel = $("theme-label");
+const themeOptions = Array.from(document.querySelectorAll(".theme-option"));
+const themeNames = { system: "跟随系统", light: "浅色", dark: "深色" };
+
+function applyTheme(theme) {
+  const value = themeNames[theme] ? theme : "system";
+  document.documentElement.dataset.theme = value;
+  themeLabel.textContent = themeNames[value];
+  themeOptions.forEach((option) => {
+    option.setAttribute("aria-selected", String(option.dataset.theme === value));
+  });
+  try { localStorage.setItem("nudge-theme", value); } catch (e) {}
+}
+
+function closeThemeMenu() {
+  themeMenu.hidden = true;
+  themeTrigger.setAttribute("aria-expanded", "false");
+}
+
+function openThemeMenu() {
+  themeMenu.hidden = false;
+  themeTrigger.setAttribute("aria-expanded", "true");
+  const selected = themeOptions.find((option) => option.getAttribute("aria-selected") === "true");
+  if (selected) selected.focus();
+}
+
+applyTheme(document.documentElement.dataset.theme || "system");
+
+themeTrigger.onclick = () => {
+  if (themeMenu.hidden) openThemeMenu();
+  else closeThemeMenu();
 };
+
+themeOptions.forEach((option) => {
+  option.onclick = () => {
+    applyTheme(option.dataset.theme);
+    closeThemeMenu();
+    themeTrigger.focus();
+  };
+});
+
+document.addEventListener("click", (event) => {
+  if (!themePicker.contains(event.target)) closeThemeMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeThemeMenu();
+    themeTrigger.focus();
+  }
+});
+
+themeTrigger.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    openThemeMenu();
+  }
+});
+
+themeMenu.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  event.preventDefault();
+  const current = themeOptions.indexOf(document.activeElement);
+  const delta = event.key === "ArrowDown" ? 1 : -1;
+  const next = (current + delta + themeOptions.length) % themeOptions.length;
+  themeOptions[next].focus();
+});
 
 $("settings-btn").onclick = openSettings;
 $("setting-cancel").onclick = () => $("settings-dialog").close();
