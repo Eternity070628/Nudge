@@ -304,6 +304,18 @@ def send_code(to_email: str, code: str, purpose: str) -> dict:
     text = _mail_text(action, code)
     mode = status()["mode"]
     if mode == "brevo":
+        # 同一个域不能自己给自己代发：QQ 企业邮 / 腾讯企业邮会以
+        # 「550 Mime from domain is a local domain」直接拒收（防伪造），
+        # 而 Brevo 的接口是异步投递，会先返回成功——那样就成了"假装发出去了"。
+        to_domain = to_email.rsplit("@", 1)[-1].lower()
+        from_domain = config.BREVO_SENDER.rsplit("@", 1)[-1].lower()
+        if to_domain and to_domain == from_domain:
+            raise MailError(
+                f"收件地址和发件地址同属 @{from_domain}：QQ 企业邮会以"
+                "「550 Mime from domain is a local domain」拒收第三方代发的自家域名邮件。"
+                f"请换一个其它邮箱注册（如 QQ / Gmail），或等 Microsoft Graph 恢复后由 "
+                f"{config.GRAPH_SENDER} 本人发出。"
+            )
         _brevo_send(to_email, subject, text)
         return {"dev": False}
     if mode == "smtp":

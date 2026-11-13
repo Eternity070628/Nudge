@@ -183,6 +183,11 @@ NUDGE_EMAIL_DEV=0
 
 常见报错都做了中文映射：key 错是 401、发件地址没验证是 400、超额度是 429、Brevo 侧故障是 5xx——**任何情况下都不会假装发送成功**。
 
+两个实测坑，代码里都处理了：
+
+- **免费主机要走出站代理**：PythonAnywhere 免费版把出站请求锁在 `proxy.server:3128` 后面，不设代理会直接 `Errno 101 Network is unreachable`。`MAIL_PROXY` 留空时会在 PythonAnywhere 上自动识别（也可显式写 `MAIL_PROXY=http://proxy.server:3128`）。
+- **同域代发会被拒**：发件人用学校邮箱、收件人也填同域地址时，腾讯企业邮会回 `550 Mime from domain is a local domain`（防伪造）。Brevo 的接口是异步的，会先回 200，所以这里**在发送前就拦下并明确报错**，不会让用户以为码已经发出去了。注册时请换其它邮箱（QQ / Gmail 实测可正常进收件箱）。
+
 ![登录页发信状态](docs/login-mail-status.png)
 
 保留 `u_demo` 公开演示账号，登录页有「进入公开演示账号」；新注册用户从空看板开始。登录态使用 HttpOnly Cookie session；密码只存 PBKDF2 哈希。
