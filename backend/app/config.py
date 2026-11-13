@@ -86,6 +86,9 @@ SMTP_VERIFY_TLS = os.getenv("SMTP_VERIFY_TLS", "1").strip().lower() in ("1", "tr
 # 于是把信交给 Brevo 的 HTTPS 接口发：不受端口封锁影响，免费额度 300 封/天。
 # 发件地址必须先在 Brevo 后台验证过（Senders & IP），key 同样只从环境变量读。
 # ---------------------------------------------------------------------------
+# 免费主机常把出站请求锁在代理后面（PythonAnywhere 免费版必须走 proxy.server:3128）。
+# 留空时自动识别：在 PythonAnywhere 上自动用它的代理，本机则直连。
+MAIL_PROXY = os.getenv("MAIL_PROXY", "").strip()
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
 BREVO_SENDER = os.getenv("BREVO_SENDER", "").strip() or SMTP_SENDER
 BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "").strip() or SMTP_SENDER_NAME

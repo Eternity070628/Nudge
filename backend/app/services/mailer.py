@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import smtplib
 import ssl
 import time
@@ -43,6 +44,32 @@ AUTH_HINTS = ("invalid_grant", "InvalidAuthenticationToken", "AADSTS70000", "AAD
 
 class MailError(RuntimeError):
     """邮件服务不可用；调用方应把原因原样告诉用户，绝不假装发信成功。"""
+
+
+_OPENER: urllib.request.OpenerDirector | None = None
+
+
+def _proxy_url() -> str:
+    """出站代理：显式 MAIL_PROXY 优先；在 PythonAnywhere 上自动用它的代理。"""
+    explicit = config.MAIL_PROXY
+    if explicit:
+        return explicit
+    if os.getenv("PYTHONANYWHERE_DOMAIN") or os.getenv("PYTHONANYWHERE_SITE"):
+        return "http://proxy.server:3128"
+    return ""
+
+
+def _opener() -> urllib.request.OpenerDirector:
+    """带代理的 opener；免费主机（PythonAnywhere 免费版）不设代理会直接 Errno 101。"""
+    global _OPENER
+    if _OPENER is None:
+        proxy = _proxy_url()
+        if proxy:
+            handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+            _OPENER = urllib.request.build_opener(handler)
+        else:
+            _OPENER = urllib.request.build_opener()
+    return _OPENER
 
 
 def _http_error(prefix: str, code: int, raw: str) -> MailError:
@@ -71,7 +98,7 @@ def _form(url: str, data: dict[str, str], timeout: int = 30) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _opener().open(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         raw = ""
@@ -92,7 +119,7 @@ def _json(url: str, token: str, payload: dict, timeout: int = 30) -> None:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _opener().open(request, timeout=timeout) as response:
             response.read()
     except urllib.error.HTTPError as error:
         raw = ""
@@ -236,7 +263,7 @@ def _brevo_send(to_email: str, subject: str, text: str) -> None:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=25) as response:
+        with _opener().open(request, timeout=25) as response:
             response.read()
     except urllib.error.HTTPError as error:
         raw = ""
