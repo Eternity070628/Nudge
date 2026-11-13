@@ -630,7 +630,6 @@ function startApp() {
   resetRunbook();
   loadHealth();
   loadSettings();
-  loadSamples();
   loadBoard().then(demoMode);
 }
 
@@ -915,22 +914,24 @@ async function handleLogout() {
 
 async function initAuth() {
   const path = location.pathname;
+  let data;
   try {
-    const data = await api("/api/auth/me");
-    if (path === "/") {
-      location.replace(data.user.is_admin ? "/admin" : "/app");
-      return;
-    }
-    if (path === "/admin") {
-      if (!data.user.is_admin) { location.replace("/app"); return; }
-      enterAdmin(data.user);
-      return;
-    }
-    enterApp(data.user);
+    data = await api("/api/auth/me");
   } catch (e) {
     if (path === "/") showAuth();
     else location.replace("/");
+    return;
   }
+  if (path === "/") {
+    location.replace(data.user.is_admin ? "/admin" : "/app");
+    return;
+  }
+  if (path === "/admin") {
+    if (!data.user.is_admin) { location.replace("/app"); return; }
+    enterAdmin(data.user);
+    return;
+  }
+  enterApp(data.user);
 }
 
 const themeNames = { system: "跟随系统", light: "浅色", dark: "深色" };
