@@ -14,6 +14,13 @@ MAAS_API_KEY = os.getenv("MAAS_API_KEY", "")
 # 早期写的 deepseek-v4.1-flash 只是口头叫法，不被接口接受（400 model not found）
 MAAS_MODEL = os.getenv("MAAS_MODEL", "deepseek-flash")
 
+# Microsoft Graph 设备码授权：验证码由 Eternity070628@outlook.com 本人邮箱发出
+GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
+GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
+GRAPH_SENDER = os.getenv("GRAPH_SENDER", "Eternity070628@outlook.com")
+GRAPH_SCOPES = os.getenv("GRAPH_SCOPES", "Mail.Send offline_access")
+NUDGE_EMAIL_DEV = os.getenv("NUDGE_EMAIL_DEV", "").strip().lower() in ("1", "true", "yes", "on")
+
 TZ = "Asia/Shanghai"
 
 # 提醒策略：截止前 N 天

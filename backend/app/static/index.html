@@ -19,6 +19,63 @@
 <body>
 <div class="glow g1"></div><div class="glow g2"></div>
 
+<section id="auth-screen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="mark">N</div>
+      <div><h1>Nudge</h1><p>登录后管理你的截止</p></div>
+    </div>
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab active" data-auth-tab="login">登录</button>
+      <button type="button" class="auth-tab" data-auth-tab="register">注册</button>
+      <button type="button" class="auth-tab" data-auth-tab="reset">重置密码</button>
+    </div>
+
+    <form id="login-form" class="auth-form">
+      <label>邮箱<input id="login-email" type="email" autocomplete="email" placeholder="you@example.com" /></label>
+      <label>密码
+        <span class="pass-row"><input id="login-password" type="password" autocomplete="current-password" /><button type="button" class="show-pass" data-target="login-password">显示</button></span>
+      </label>
+      <p class="auth-status" id="login-status"></p>
+      <button class="btn primary auth-submit" type="submit">登录</button>
+      <button class="btn ghost auth-submit" type="button" id="demo-login">进入公开演示账号</button>
+    </form>
+
+    <form id="register-form" class="auth-form hidden">
+      <label>昵称<input id="register-name" autocomplete="nickname" maxlength="20" /></label>
+      <label>邮箱<input id="register-email" type="email" autocomplete="email" /></label>
+      <label>密码
+        <span class="pass-row"><input id="register-password" type="password" autocomplete="new-password" /><button type="button" class="show-pass" data-target="register-password">显示</button></span>
+      </label>
+      <label>确认密码
+        <span class="pass-row"><input id="register-confirm" type="password" autocomplete="new-password" /><button type="button" class="show-pass" data-target="register-confirm">显示</button></span>
+      </label>
+      <label>邮箱验证码
+        <span class="code-row"><input id="register-code" inputmode="numeric" maxlength="6" /><button type="button" class="btn ghost code-btn" id="register-send">发送验证码</button></span>
+      </label>
+      <p class="auth-status" id="register-status"></p>
+      <button class="btn primary auth-submit" type="submit">注册并登录</button>
+    </form>
+
+    <form id="reset-form" class="auth-form hidden">
+      <label>邮箱<input id="reset-email" type="email" autocomplete="email" /></label>
+      <label>验证码
+        <span class="code-row"><input id="reset-code" inputmode="numeric" maxlength="6" /><button type="button" class="btn ghost code-btn" id="reset-send">发送验证码</button></span>
+      </label>
+      <label>新密码
+        <span class="pass-row"><input id="reset-password" type="password" autocomplete="new-password" /><button type="button" class="show-pass" data-target="reset-password">显示</button></span>
+      </label>
+      <label>确认新密码
+        <span class="pass-row"><input id="reset-confirm" type="password" autocomplete="new-password" /><button type="button" class="show-pass" data-target="reset-confirm">显示</button></span>
+      </label>
+      <p class="auth-status" id="reset-status"></p>
+      <button class="btn primary auth-submit" type="submit">重置密码</button>
+    </form>
+    <p class="auth-note">验证码由 Eternity070628@outlook.com 发送。Graph 未授权时，开发模式会在页面显示验证码。</p>
+  </div>
+</section>
+
+<div id="app-shell" class="hidden">
 <header class="top">
   <div class="brand">
     <div class="mark">N</div>
@@ -29,18 +86,21 @@
   </div>
   <div class="top-right">
     <div class="theme-picker" id="theme-picker">
-    <button class="theme-trigger" id="theme-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="主题">
-      <span id="theme-label">跟随系统</span>
-      <span class="chevron" aria-hidden="true">▾</span>
-    </button>
-    <div class="theme-menu" id="theme-menu" role="listbox" aria-label="主题" hidden>
-      <button class="theme-option" type="button" role="option" data-theme="system" aria-selected="true">跟随系统</button>
-      <button class="theme-option" type="button" role="option" data-theme="light" aria-selected="false">浅色</button>
-      <button class="theme-option" type="button" role="option" data-theme="dark" aria-selected="false">深色</button>
+      <button class="theme-trigger" id="theme-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="主题">
+        <span id="theme-label">跟随系统</span>
+        <span class="chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="theme-menu" id="theme-menu" role="listbox" aria-label="主题" hidden>
+        <button class="theme-option" type="button" role="option" data-theme="system" aria-selected="true">跟随系统</button>
+        <button class="theme-option" type="button" role="option" data-theme="light" aria-selected="false">浅色</button>
+        <button class="theme-option" type="button" role="option" data-theme="dark" aria-selected="false">深色</button>
+      </div>
     </div>
-  </div>
-    <button class="btn ghost btn-mini" id="settings-btn" type="button">模型设置</button>
+    <span class="user-chip" id="user-name"></span>
+    <button class="btn ghost btn-mini hidden" id="admin-btn" type="button">管理端</button>
+    <button class="btn ghost btn-mini hidden" id="settings-btn" type="button">模型设置</button>
     <div class="engine" id="engine">检测引擎中…</div>
+    <button class="btn ghost btn-mini" id="logout-btn" type="button">退出</button>
   </div>
 </header>
 
@@ -108,6 +168,30 @@
   <span>Nudge MVP · FastAPI + SQLite · 抽取 → 校验 → 匹配 → 编排</span>
   <span id="llm-note"></span>
 </footer>
+</div>
+
+<section id="admin-screen" class="admin-screen hidden">
+  <header class="top">
+    <div class="brand">
+      <div class="mark">N</div>
+      <div><h1>Nudge <span class="cn">管理端</span></h1><p class="slogan">用户与访问管理</p></div>
+    </div>
+    <div class="top-right">
+      <span class="user-chip" id="admin-name"></span>
+      <button class="btn ghost btn-mini" id="admin-back" type="button">返回看板</button>
+      <button class="btn ghost btn-mini" id="admin-logout" type="button">退出</button>
+    </div>
+  </header>
+  <main class="admin-main">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>用户管理</h2>
+        <span class="hint" id="admin-count"></span>
+      </div>
+      <div id="admin-users" class="admin-list"></div>
+    </section>
+  </main>
+</section>
 
 <script src="/static/app.js"></script>
 </body>

@@ -68,3 +68,28 @@ class ExtractRequest(BaseModel):
 class EventCreate(BaseModel):
     draft: EventDraft
     user_id: str = "u_demo"
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class RegisterRequest(BaseModel):
+    nickname: str
+    email: str
+    password: str
+    confirm: str
+    code: str
+
+
+class ResetRequest(BaseModel):
+    email: str
+    code: str
+    password: str
+    confirm: str
+
+
+class SendCodeRequest(BaseModel):
+    email: str
+    purpose: Literal["register", "reset"]

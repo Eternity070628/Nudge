@@ -11,22 +11,25 @@ import sys
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db
 from .agents import extractor, llm, matcher, planner, verifier
+from .auth import admin_router, current_user, require_admin, router as auth_router
 from .config import BASE_DIR
 from .models import EventCreate, ExtractRequest
 from .services import ics
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="0.1.5")
+app = FastAPI(title="Nudge · 校园截止管家", version="1.0.0")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()
+app.include_router(auth_router)
+app.include_router(admin_router)
 
 
 class SettingsUpdate(BaseModel):
@@ -53,6 +56,7 @@ def _decorate(event: dict[str, Any]) -> dict[str, Any]:
     event["urgency"] = planner.urgency(event)
     event["checklist"] = planner.build_checklist(event)
     event["reminders"] = planner.build_reminders(event)
+    event["done"] = bool(event.get("done_at"))
     return event
 
 
@@ -81,12 +85,12 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/api/settings")
-def api_settings() -> dict[str, Any]:
+def api_settings(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     return _public_settings()
 
 
 @app.post("/api/settings")
-def api_save_settings(body: SettingsUpdate) -> dict[str, Any]:
+def api_save_settings(body: SettingsUpdate, _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     values: dict[str, str] = {}
     if body.base_url.strip():
         values["base_url"] = body.base_url.strip().rstrip("/")
@@ -106,7 +110,8 @@ def api_save_settings(body: SettingsUpdate) -> dict[str, Any]:
 
 
 @app.get("/api/llm-test")
-def api_llm_test(kind: str = Query("chat", pattern="^(chat|models)$")) -> dict[str, Any]:
+def api_llm_test(kind: str = Query("chat", pattern="^(chat|models)$"),
+                 _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     """真发一次最小请求，把状态码与报错原文摊开——排查「为什么没调到模型」。"""
     result = llm.probe(kind=kind)
     result["mode"] = llm.mode() or "auto"
@@ -114,7 +119,7 @@ def api_llm_test(kind: str = Query("chat", pattern="^(chat|models)$")) -> dict[s
 
 
 @app.post("/api/extract")
-def api_extract(req: ExtractRequest) -> dict[str, Any]:
+def api_extract(req: ExtractRequest, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if len(req.text.strip()) < 10:
         raise HTTPException(400, "文本太短，粘贴一段完整通知再来")
     anchor = date.today()
@@ -127,7 +132,7 @@ def api_extract(req: ExtractRequest) -> dict[str, Any]:
     draft.source.type = req.source_type  # type: ignore[assignment]
     draft.source.url = req.url
     draft = verifier.verify(req.text, draft)
-    relevance, reasons = matcher.match(draft, db.get_user("u_demo") or {})
+    relevance, reasons = matcher.match(draft, user)
     return {
         "draft": draft.model_dump(),
         "relevance": relevance,
@@ -138,35 +143,44 @@ def api_extract(req: ExtractRequest) -> dict[str, Any]:
 
 
 @app.post("/api/events")
-def api_create(body: EventCreate) -> dict[str, Any]:
-    user = db.get_user(body.user_id)
-    if not user:
-        raise HTTPException(404, "用户不存在")
+def api_create(body: EventCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     draft = body.draft
     relevance, reasons = matcher.match(draft, user)
-    event_id, created = db.save_event(draft, body.user_id, relevance, reasons)
+    event_id, created = db.save_event(draft, user["id"], relevance, reasons)
     return {"id": event_id, "created": created}
 
 
 @app.get("/api/events")
-def api_events(user_id: str = "u_demo") -> list[dict[str, Any]]:
-    return [_decorate(e) for e in db.list_events(user_id)]
+def api_events(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
+    return [_decorate(e) for e in db.list_events(user["id"])]
 
 
 @app.post("/api/events/{event_id}/done")
-def api_done(event_id: str, user_id: str = "u_demo") -> dict[str, Any]:
-    db.mark_done(user_id, event_id)
+def api_done(event_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    db.mark_done(user["id"], event_id)
+    return {"ok": True}
+
+
+@app.post("/api/events/{event_id}/undone")
+def api_undone(event_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    db.mark_active(user["id"], event_id)
+    return {"ok": True}
+
+
+@app.delete("/api/events/{event_id}")
+def api_delete_event(event_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    if not db.delete_event(user["id"], event_id):
+        raise HTTPException(404, "事件不存在")
     return {"ok": True}
 
 
 @app.get("/api/dashboard")
-def api_dashboard(user_id: str = "u_demo") -> dict[str, Any]:
-    user = db.get_user(user_id)
-    if not user:
-        raise HTTPException(404, "用户不存在")
+def api_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    user_id = user["id"]
     events = [_decorate(e) for e in db.list_events(user_id)]
-    upcoming = [e for e in events if (e["days_left"] is None or e["days_left"] >= 0)]
-    urgent = [e for e in upcoming if e["days_left"] is not None and e["days_left"] <= 7]
+    active = [e for e in events if not e.get("done_at")]
+    upcoming = [e for e in active if (e["days_left"] is None or e["days_left"] >= 0)]
+    urgent = [e for e in upcoming if e["days_left"] is not None and 0 <= e["days_left"] <= 7]
     conflicts = planner.detect_conflicts(upcoming)
     total_materials = sum(len(e["checklist"]) for e in upcoming)
     return {
@@ -177,34 +191,37 @@ def api_dashboard(user_id: str = "u_demo") -> dict[str, Any]:
             "materials": total_materials,
             "saved_minutes": len(events) * 12,
         },
-        "events": upcoming,
+        "events": events,
+        "active_count": len(active),
         "conflicts": conflicts,
-        "brief": planner.weekly_brief(events, user),
+        "brief": planner.weekly_brief(active, user),
         "feedback": db.feedback_stats(user_id),
     }
 
 
 @app.get("/api/weekly")
-def api_weekly(user_id: str = "u_demo") -> dict[str, Any]:
-    user = db.get_user(user_id) or {}
-    return planner.weekly_brief(db.list_events(user_id), user)
+def api_weekly(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    active = [e for e in db.list_events(user["id"]) if not e.get("done_at")]
+    return planner.weekly_brief(active, user)
 
 
 @app.get("/api/calendar/{token}.ics", response_class=PlainTextResponse)
-def api_calendar(token: str, user_id: str = Query("u_demo")) -> PlainTextResponse:
-    user = db.get_user(user_id)
-    if not user or user.get("token") != token:
+def api_calendar(token: str) -> PlainTextResponse:
+    user = db.get_user_by_token(token)
+    if not user:
         raise HTTPException(403, "日历订阅链接无效")
-    body = ics.build_calendar(db.list_events(user_id), name="Nudge · " + (user.get("name") or "我的截止"))
+    active = [e for e in db.list_events(user["id"]) if not e.get("done_at")]
+    body = ics.build_calendar(active, name="Nudge · " + (user.get("name") or "我的截止"))
     return PlainTextResponse(body, media_type="text/calendar; charset=utf-8",
                              headers={"Content-Disposition": 'inline; filename="nudge.ics"'})
 
 
 @app.post("/api/feedback")
-def api_feedback(event_id: str, kind: str = "useful", user_id: str = "u_demo") -> dict[str, Any]:
+def api_feedback(event_id: str, kind: str = "useful",
+                 user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if kind not in ("useful", "not_relevant", "wrong_deadline"):
         raise HTTPException(400, "未知反馈类型")
-    db.add_feedback(user_id, event_id, kind)
+    db.add_feedback(user["id"], event_id, kind)
     return {"ok": True}
 
 
@@ -214,16 +231,13 @@ def api_samples() -> list[dict[str, str]]:
 
 
 @app.post("/api/seed")
-def api_seed(user_id: str = "u_demo") -> dict[str, Any]:
-    user = db.get_user(user_id)
-    if not user:
-        raise HTTPException(404, "用户不存在")
+def api_seed(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     added = 0
     for s in SAMPLES:
         draft = extractor.extract(s["text"])
         draft = verifier.verify(s["text"], draft)
         rel, reasons = matcher.match(draft, user)
-        _, created = db.save_event(draft, user_id, rel, reasons)
+        _, created = db.save_event(draft, user["id"], rel, reasons)
         added += 1 if created else 0
     return {"ok": True, "added": added, "total": len(SAMPLES)}
 

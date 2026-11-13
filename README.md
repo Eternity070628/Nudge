@@ -106,6 +106,14 @@ nudge/
 
 没有 Key 时自动回退纯规则，页面状态显示「规则模式」。填写后 `/api/health` 的 `llm` 变为 `true`，抽取走「规则 + 模型补充」，模型输出仍要过 `verifier` 的逐字证据校验。Key 只保存在本机 `backend/data/nudge.db`（已 gitignore），不会进入 release 源码包；这是单机演示的本地明文存储，生产环境应改用密钥管理服务。
 
+## 6.1 登录与多用户
+
+进入站点先登录。支持邮箱+密码登录、昵称/邮箱/密码/验证码注册、邮箱验证码重置密码；密码框可切换明文查看。登录邮箱为管理员邮箱时自动进入管理端，可查看和删除用户；删除用户会清理其事件、反馈和会话。
+
+验证码走 Microsoft Graph 设备码授权，发件邮箱为 `Eternity070628@outlook.com`。服务器设置 `GRAPH_TENANT_ID`、`GRAPH_CLIENT_ID` 后运行 `python -m app.services.mailer auth` 完成一次授权，refresh token 存本机 SQLite，不进仓库。本地没有 Graph 凭据时可用 `NUDGE_EMAIL_DEV=1`，验证码会显示在页面并明确标注开发模式。
+
+保留 `u_demo` 公开演示账号，登录页有「进入公开演示账号」；新注册用户从空看板开始。登录态使用 HttpOnly Cookie session；密码只存 PBKDF2 哈希。
+
 ## 7. 主题
 
 右上角「跟随系统 / 浅色 / 深色」三档；选择存浏览器 `localStorage`，刷新后保留。颜色走 `:root` 深色变量与 `[data-theme="light"]` 浅色变量；跟随系统时用 `prefers-color-scheme`，不需要刷新。下拉菜单也使用同一组主题变量，深色下不会出现系统默认白底菜单。
