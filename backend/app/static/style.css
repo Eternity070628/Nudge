@@ -161,7 +161,8 @@ html[data-page="login"] #admin-screen{display:none}
 .field{display:grid;grid-template-columns:74px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-soft)}
 .field .k{font-size:12px;color:var(--dim);padding-top:2px}
 .field .v{font-size:13px;line-height:1.65;min-width:0;overflow-wrap:anywhere}
-.field .v .badge{margin:6px 8px 0 0}
+.field-status{display:flex;align-items:center;gap:8px;margin-top:6px}
+.field-status .badge,.field-status .edited-badge{margin:0}
 .conf{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:6px;margin-left:7px;vertical-align:1px}
 .c-hi{color:var(--ok);background:var(--ok-bg)}
 .c-mid{color:var(--amber);background:var(--amber-bg)}
@@ -265,8 +266,9 @@ html[data-page="login"] #admin-screen{display:none}
 .edit-input:focus{border-color:rgba(247,178,103,.55)}
 textarea.edit-input{resize:vertical;line-height:1.5}
 .edit-stack{display:flex;flex-direction:column;gap:6px}
-.edited-badge{display:inline-block;margin-top:6px;padding:2px 7px;border:1px solid rgba(247,178,103,.3);
+.edited-badge{display:inline-block;padding:2px 7px;border:1px solid rgba(247,178,103,.3);
   border-radius:999px;font-size:10.5px;color:var(--amber);background:var(--amber-bg)}
+.edited-badge.hidden{display:none}
 .ev.done{opacity:.45}
 .ev.done .t{text-decoration:line-through}
 .ev .d .del{display:inline-block;margin-top:6px;font-size:10.5px;color:var(--red);opacity:.7;cursor:pointer}

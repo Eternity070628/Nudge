@@ -58,9 +58,11 @@ function editRow(label, inputNode, conf, quote) {
   row.appendChild(el("div", "k", label));
   const v = el("div", "v");
   v.appendChild(inputNode);
-  if (conf !== undefined) v.appendChild(confChip(conf));
+  const status = el("div", "field-status");
+  if (conf !== undefined) status.appendChild(confChip(conf));
+  status.appendChild(el("span", "edited-badge hidden", "已人工修改"));
+  v.appendChild(status);
   if (quote) v.appendChild(el("div", "quote", "原文：" + quote));
-  v.appendChild(el("span", "edited-badge hidden", "已人工修改"));
   row.appendChild(v);
   return row;
 }
