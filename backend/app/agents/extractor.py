@@ -257,6 +257,18 @@ def _find_submission(text: str) -> tuple[Submission, str]:
     return sub, ev
 
 
+SUBMISSION_HINTS = ("交至", "送至", "报送", "邮寄", "发送至", "上传",
+                    "提交至", "提交地点", "提交方式", "报名系统", "系统填报",
+                    "线下提交", "现场提交", "窗口")
+
+
+def _submission_scope(text: str, sub: Submission) -> str:
+    """只取与提交方式相关的句子，避免把活动地点/截止校区误算到提交方式。"""
+    parts = [s for s in _sentences(text) if any(w in s for w in SUBMISSION_HINTS)]
+    parts.extend([sub.location, sub.url, sub.email])
+    return "\n".join(part for part in parts if part)
+
+
 def _importance(text: str, category: str) -> int:
     score = 2
     if category in ("competition", "scholarship", "exam"):
@@ -366,8 +378,21 @@ def extract(text: str, anchor: date | None = None, user_id: str | None = None,
                 draft.audience = llm_draft.audience
             draft.evidence.update({k: v for k, v in llm_draft.evidence.items() if v and v[:8] in text})
 
-    # 截止校验同时看校区：通知写了就以通知为准，没写才用用户默认校区。
-    explicit_campus = _detect_campus(text)
+    # 提交方式独立校验：先看提交相关文本，避免提交地点反过来影响截止校区。
+    submission_scope = _submission_scope(text, draft.submission)
+    submission_campus = _detect_campus(submission_scope)
+    event_text = text
+    for sentence in _sentences(text):
+        if any(w in sentence for w in SUBMISSION_HINTS):
+            event_text = event_text.replace(sentence, "")
+    if draft.submission.location:
+        event_text = event_text.replace(draft.submission.location, "")
+
+    # 截止校验看校区：优先截止证据句，其次再看非提交正文，最后才用用户默认校区。
+    deadline_text = draft.evidence.get("deadline", "")
+    explicit_campus = _detect_campus(deadline_text)
+    if explicit_campus == "unknown":
+        explicit_campus = _detect_campus(event_text)
     if explicit_campus != "unknown":
         draft.campus = explicit_campus  # type: ignore[assignment]
         if default_campus and default_campus != explicit_campus:
@@ -379,6 +404,17 @@ def extract(text: str, anchor: date | None = None, user_id: str | None = None,
                 draft.needs_review.append("campus")
     elif default_campus:
         draft.campus = default_campus  # type: ignore[assignment]
+
+    draft.submission.campus = (submission_campus if submission_campus != "unknown"
+                               else draft.campus)  # type: ignore[assignment]
+    if (draft.submission.campus != "unknown" and draft.campus != "unknown"
+            and draft.submission.campus != draft.campus):
+        note = (f"提交方式写的是{campus_label(draft.submission.campus)}，"
+                f"与事件校区（{campus_label(draft.campus)}）不同，请确认")
+        if note not in draft.warnings:
+            draft.warnings.append(note)
+        if "submission" not in draft.needs_review:
+            draft.needs_review.append("submission")
 
     for field in ("deadline", "materials", "audience", "submission"):
         key = "deadline" if field == "deadline" else field

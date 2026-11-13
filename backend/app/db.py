@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
   interests TEXT, token TEXT UNIQUE, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
-  id TEXT PRIMARY KEY, title TEXT, category TEXT,
+  id TEXT PRIMARY KEY, title TEXT, category TEXT, campus TEXT,
   deadline_start TEXT, deadline_end TEXT, deadline_raw TEXT,
   audience TEXT, materials TEXT, submission TEXT,
   evidence TEXT, source TEXT, importance INTEGER,
@@ -77,6 +77,10 @@ def init() -> None:
             except sqlite3.OperationalError:
                 pass
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN campus TEXT")
+        except sqlite3.OperationalError:
+            pass
         c.execute(
             "INSERT OR IGNORE INTO users(id,name,grade,major,interests,token,created_at) VALUES(?,?,?,?,?,?,?)",
             ("u_demo", "张同学", "2024级", "计算机学院",
@@ -130,11 +134,11 @@ def save_event(draft: EventDraft, user_id: str, relevance: float = 0.5,
         if created:
             eid, created = "e_" + uuid.uuid4().hex[:10], True
             c.execute(
-                """INSERT INTO events(id,title,category,deadline_start,deadline_end,deadline_raw,
+                """INSERT INTO events(id,title,category,campus,deadline_start,deadline_end,deadline_raw,
                    audience,materials,submission,evidence,source,importance,confidence,
-                   overall_confidence,dedup_key,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   overall_confidence,dedup_key,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    eid, draft.title, draft.category,
+                    eid, draft.title, draft.category, draft.campus,
                     draft.deadline.start, draft.deadline.end, draft.deadline.raw,
                     draft.audience.model_dump_json(),
                     json.dumps([m.model_dump() for m in draft.materials], ensure_ascii=False),
@@ -149,6 +153,10 @@ def save_event(draft: EventDraft, user_id: str, relevance: float = 0.5,
             )
         else:
             eid = row["id"]
+        c.execute(
+            "UPDATE events SET campus=? WHERE id=? AND (campus IS NULL OR campus='')",
+            (draft.campus, eid),
+        )
         had_user_event = c.execute(
             "SELECT 1 FROM user_events WHERE user_id=? AND event_id=?", (user_id, eid)
         ).fetchone() is not None
@@ -166,6 +174,8 @@ def _row_to_event(r: sqlite3.Row) -> dict[str, Any]:
     d = dict(r)
     for k in ("audience", "submission", "evidence", "confidence", "source"):
         d[k] = json.loads(d[k] or "{}")
+    if isinstance(d["submission"], dict) and not d["submission"].get("campus"):
+        d["submission"]["campus"] = d.get("campus") or "unknown"
     d["materials"] = json.loads(d["materials"] or "[]")
     d["reasons"] = json.loads(d.get("reasons") or "[]")
     return d

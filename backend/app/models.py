@@ -34,6 +34,7 @@ class Submission(BaseModel):
     url: str = ""
     email: str = ""
     location: str = ""
+    campus: Campus = "unknown"
 
 
 class Source(BaseModel):

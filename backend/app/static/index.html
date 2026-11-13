@@ -143,30 +143,34 @@
       <div class="agent-step" data-agent="extractor" data-state="idle">
         <div class="agent-dot"></div>
         <div class="agent-body">
-          <div class="agent-title">抽取 Agent<span class="agent-state">待命</span></div>
-          <p>首行作标题；按「截止 / 即日起至 / 请于」等句式找日期，缺时刻默认 23:59；材料按编号拆；提交方式识别邮箱、链接与线下地点。校区：本部 / 西土城 → 海淀，昌平 → 沙河。</p>
+          <div class="agent-title">抽取 Agent</div>
+          <p>首行作标题；按「截止 / 即日起至 / 请于」等句式找日期，缺时刻默认 23:59；材料按编号拆；提交方式识别邮箱、链接与线下地点，并校验提交地点校区。校区：本部 / 西土城 → 海淀，昌平 → 沙河。</p>
         </div>
+        <span class="agent-state">待命</span>
       </div>
       <div class="agent-step" data-agent="verifier" data-state="idle">
         <div class="agent-dot"></div>
         <div class="agent-body">
-          <div class="agent-title">校验 Agent<span class="agent-state">待命</span></div>
+          <div class="agent-title">校验 Agent</div>
           <p>每个字段回原文找证据；定位不到就降级为「需确认」，绝不编造。相对时间或缺少具体时刻会提醒核对。</p>
         </div>
+        <span class="agent-state">待命</span>
       </div>
       <div class="agent-step" data-agent="matcher" data-state="idle">
         <div class="agent-dot"></div>
         <div class="agent-body">
-          <div class="agent-title">匹配 Agent<span class="agent-state">待命</span></div>
+          <div class="agent-title">匹配 Agent</div>
           <p>按年级、院系、兴趣加权计算相关度，跟你无关的通知会自动沉底。</p>
         </div>
+        <span class="agent-state">待命</span>
       </div>
       <div class="agent-step" data-agent="planner" data-state="idle">
         <div class="agent-dot"></div>
         <div class="agent-body">
-          <div class="agent-title">编排 Agent<span class="agent-state">待命</span></div>
+          <div class="agent-title">编排 Agent</div>
           <p>把通知拆成材料清单，排 D-7 / D-3 / D-1 提醒，并标出同日撞车与负载过高的日期。</p>
         </div>
+        <span class="agent-state">待命</span>
       </div>
     </div>
   </section>

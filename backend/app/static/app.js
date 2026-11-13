@@ -4,6 +4,14 @@ const CAT = { competition: "竞赛", scholarship: "奖学金", lecture: "讲座"
 const CAMPUS = { haidian: "海淀校区", shahe: "沙河校区", hainan: "海南校区", unknown: "未识别" };
 const URG = { overdue: "已过期", today: "今天截止", urgent: "天内截止", soon: "本周", later: "稍后", unknown: "待确认" };
 
+function detectCampusText(value) {
+  if (!value) return "";
+  if (/海南/.test(value)) return "hainan";
+  if (/昌平|沙河/.test(value)) return "shahe";
+  if (/海淀|本部|西土城/.test(value)) return "haidian";
+  return "";
+}
+
 function el(tag, cls, text) {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -124,6 +132,10 @@ function renderDraft(payload) {
   targetInput.placeholder = "URL / 邮箱 / 地点";
   const targetValue = () => d.submission.url || d.submission.email || d.submission.location || "";
   targetInput.value = targetValue();
+  const defaultCampus = d.campus && d.campus !== "unknown"
+    ? d.campus : ((state.user && state.user.campus) || "unknown");
+  const campusLine = el("div", "sub-campus",
+    "校区：" + (CAMPUS[d.submission.campus || defaultCampus] || CAMPUS.unknown));
   const submissionRow = editRow("提交方式", submissionBox, d.confidence.submission, d.evidence.submission);
   const syncSubmission = () => {
     const value = targetInput.value.trim();
@@ -131,12 +143,17 @@ function renderDraft(payload) {
     d.submission.url = channelSelect.value === "web" ? value : "";
     d.submission.email = channelSelect.value === "email" ? value : "";
     d.submission.location = channelSelect.value === "offline" ? value : "";
+    const detected = detectCampusText(value);
+    if (detected) d.submission.campus = detected;
+    else if (channelSelect.value === "offline") d.submission.campus = defaultCampus;
+    campusLine.textContent = "校区：" + (CAMPUS[d.submission.campus] || CAMPUS.unknown);
     markEdited(d, "submission", submissionRow);
   };
   channelSelect.onchange = () => { targetInput.value = targetValue(); syncSubmission(); };
   targetInput.oninput = syncSubmission;
   submissionBox.appendChild(channelSelect);
   submissionBox.appendChild(targetInput);
+  submissionBox.appendChild(campusLine);
   box.appendChild(submissionRow);
 
   const audienceBox = el("div", "edit-stack");
@@ -523,7 +540,8 @@ function renderEvents(list) {
     const row = el("div", "ev " + (done ? "done " : "") + (e.urgency || "later"));
     const left = el("div");
     left.appendChild(el("div", "t", e.title));
-    const meta = [CAT[e.category] || "其他", e.submission.channel === "offline" ? "需线下" : "", (e.checklist || []).length ? e.checklist.length + " 项待办" : ""].filter(Boolean).join(" · ");
+    const campusText = e.campus && e.campus !== "unknown" ? CAMPUS[e.campus] : "";
+    const meta = [CAT[e.category] || "其他", campusText, e.submission.channel === "offline" ? "需线下" : "", (e.checklist || []).length ? e.checklist.length + " 项待办" : ""].filter(Boolean).join(" · ");
     left.appendChild(el("div", "m", meta));
     const right = el("div", "d");
     const d = e.days_left;

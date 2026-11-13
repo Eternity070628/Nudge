@@ -25,7 +25,7 @@ from .models import (EmailChangeRequest, EventCreate, ExtractRequest, PasswordCh
 from .services import accounts, ics, mailer
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="1.2.0")
+app = FastAPI(title="Nudge · 校园截止管家", version="1.2.1")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()
