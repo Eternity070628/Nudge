@@ -76,6 +76,280 @@ function editRow(label, inputNode, conf, quote) {
   return row;
 }
 
+function makePicker(options, value, onSelect, className = "choice-picker") {
+  const root = el("div", "theme-picker " + className);
+  const trigger = el("button", "theme-trigger", null);
+  trigger.type = "button";
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false");
+  const label = el("span", "choice-label", "");
+  const chevron = el("span", "chevron", "▾");
+  chevron.setAttribute("aria-hidden", "true");
+  trigger.appendChild(label);
+  trigger.appendChild(chevron);
+  const menu = el("div", "theme-menu");
+  menu.hidden = true;
+  menu.setAttribute("role", "listbox");
+  let current = value;
+
+  function sync() {
+    const found = options.find(([val]) => val === current);
+    label.textContent = found ? found[1] : "";
+    root.dataset.value = current;
+    Array.from(menu.children).forEach((option) => {
+      option.setAttribute("aria-selected", String(option.dataset.value === current));
+    });
+  }
+
+  function setValue(val) {
+    current = val;
+    sync();
+  }
+
+  function close() {
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  }
+
+  function open() {
+    document.querySelectorAll(".theme-menu").forEach((node) => {
+      if (node !== menu) node.hidden = true;
+    });
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    const selected = Array.from(menu.children).find((option) => option.dataset.value === current);
+    if (selected) selected.scrollIntoView({ block: "nearest" });
+  }
+
+  options.forEach(([val, text]) => {
+    const option = el("button", "theme-option", text);
+    option.type = "button";
+    option.setAttribute("role", "option");
+    option.dataset.value = val;
+    option.onclick = () => {
+      setValue(val);
+      close();
+      trigger.focus();
+      onSelect(val);
+    };
+    menu.appendChild(option);
+  });
+  trigger.onclick = () => { if (menu.hidden) open(); else close(); };
+  sync();
+  root.appendChild(trigger);
+  root.appendChild(menu);
+  return {
+    root,
+    menu,
+    close,
+    setValue,
+    get value() { return current; },
+  };
+}
+
+function pad2(number) {
+  return String(number).padStart(2, "0");
+}
+
+function parseDeadlineValue(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value || "");
+  if (!match) return { date: null, hour: "23", minute: "59" };
+  return {
+    date: match[1] + "-" + match[2] + "-" + match[3],
+    hour: match[4],
+    minute: match[5],
+  };
+}
+
+function deadlineIso(date, hour, minute) {
+  return date ? date + "T" + hour + ":" + minute + ":00" : null;
+}
+
+function deadlineText(date, hour, minute) {
+  return date ? date.replace(/-/g, "/") + " " + hour + ":" + minute : "未设置截止时间";
+}
+
+function todayIso() {
+  const now = new Date();
+  return now.getFullYear() + "-" + pad2(now.getMonth() + 1) + "-" + pad2(now.getDate());
+}
+
+function createDeadlinePicker(value, onChange) {
+  const parsed = parseDeadlineValue(value);
+  let selectedDate = parsed.date;
+  let hour = parsed.hour;
+  let minute = parsed.minute;
+  const initial = selectedDate ? new Date(selectedDate + "T00:00:00") : new Date();
+  let viewYear = initial.getFullYear();
+  let viewMonth = initial.getMonth();
+
+  const root = el("div", "theme-picker deadline-picker");
+  const trigger = el("button", "theme-trigger", null);
+  trigger.type = "button";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+  const label = el("span", "deadline-label", "");
+  const chevron = el("span", "chevron", "▾");
+  chevron.setAttribute("aria-hidden", "true");
+  trigger.appendChild(label);
+  trigger.appendChild(chevron);
+
+  const pop = el("div", "dt-pop");
+  pop.hidden = true;
+  const head = el("div", "dt-head");
+  const prev = el("button", "dt-nav", "‹");
+  prev.type = "button";
+  prev.setAttribute("aria-label", "上个月");
+  const monthLabel = el("b", "dt-month", "");
+  const next = el("button", "dt-nav", "›");
+  next.type = "button";
+  next.setAttribute("aria-label", "下个月");
+  head.appendChild(prev);
+  head.appendChild(monthLabel);
+  head.appendChild(next);
+
+  const week = el("div", "dt-week");
+  ["日", "一", "二", "三", "四", "五", "六"].forEach((text) => week.appendChild(el("span", null, text)));
+  const grid = el("div", "dt-grid");
+  const timeRow = el("div", "dt-time");
+  timeRow.appendChild(el("span", "dt-time-label", "时间"));
+  const hourPicker = makePicker(
+    Array.from({ length: 24 }, (_, index) => [pad2(index), pad2(index)]),
+    hour,
+    (val) => {
+      hour = val;
+      if (!selectedDate) selectedDate = todayIso();
+      renderGrid();
+      emit();
+    },
+    "dt-unit-picker",
+  );
+  const minutePicker = makePicker(
+    Array.from({ length: 60 }, (_, index) => [pad2(index), pad2(index)]),
+    minute,
+    (val) => {
+      minute = val;
+      if (!selectedDate) selectedDate = todayIso();
+      renderGrid();
+      emit();
+    },
+    "dt-unit-picker",
+  );
+  timeRow.appendChild(hourPicker.root);
+  timeRow.appendChild(el("span", "dt-colon", ":"));
+  timeRow.appendChild(minutePicker.root);
+
+  const actions = el("div", "dt-actions");
+  const clear = el("button", "btn ghost btn-mini", "清除");
+  clear.type = "button";
+  const now = el("button", "btn ghost btn-mini", "今天 23:59");
+  now.type = "button";
+  const done = el("button", "btn primary btn-mini", "确定");
+  done.type = "button";
+  actions.appendChild(clear);
+  actions.appendChild(now);
+  actions.appendChild(done);
+
+  function updateLabel() {
+    label.textContent = deadlineText(selectedDate, hour, minute);
+  }
+
+  function emit() {
+    updateLabel();
+    onChange(deadlineIso(selectedDate, hour, minute));
+  }
+
+  function blankDay() {
+    const button = el("button", "dt-day blank", "");
+    button.type = "button";
+    button.disabled = true;
+    return button;
+  }
+
+  function renderGrid() {
+    monthLabel.textContent = viewYear + "年" + (viewMonth + 1) + "月";
+    grid.innerHTML = "";
+    const firstWeekday = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const today = todayIso();
+    for (let i = 0; i < firstWeekday; i += 1) grid.appendChild(blankDay());
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = viewYear + "-" + pad2(viewMonth + 1) + "-" + pad2(day);
+      const button = el("button", "dt-day", String(day));
+      button.type = "button";
+      button.dataset.date = date;
+      if (date === today) button.classList.add("today");
+      if (date === selectedDate) button.classList.add("selected");
+      button.onclick = () => {
+        selectedDate = date;
+        renderGrid();
+        emit();
+      };
+      grid.appendChild(button);
+    }
+    while (grid.children.length < 42) grid.appendChild(blankDay());
+  }
+
+  function shiftMonth(delta) {
+    viewMonth += delta;
+    if (viewMonth < 0) { viewMonth = 11; viewYear -= 1; }
+    if (viewMonth > 11) { viewMonth = 0; viewYear += 1; }
+    renderGrid();
+  }
+
+  function close() {
+    pop.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  }
+
+  prev.onclick = () => shiftMonth(-1);
+  next.onclick = () => shiftMonth(1);
+  clear.onclick = () => {
+    selectedDate = null;
+    emit();
+    close();
+  };
+  now.onclick = () => {
+    selectedDate = todayIso();
+    hour = "23";
+    minute = "59";
+    hourPicker.setValue(hour);
+    minutePicker.setValue(minute);
+    const today = new Date(selectedDate + "T00:00:00");
+    viewYear = today.getFullYear();
+    viewMonth = today.getMonth();
+    renderGrid();
+    emit();
+    close();
+  };
+  done.onclick = () => {
+    emit();
+    close();
+  };
+  trigger.onclick = () => {
+    if (pop.hidden) {
+      document.querySelectorAll(".dt-pop,.theme-menu").forEach((node) => {
+        if (node !== pop) node.hidden = true;
+      });
+      pop.hidden = false;
+      trigger.setAttribute("aria-expanded", "true");
+    } else {
+      close();
+    }
+  };
+
+  updateLabel();
+  renderGrid();
+  pop.appendChild(head);
+  pop.appendChild(week);
+  pop.appendChild(grid);
+  pop.appendChild(timeRow);
+  pop.appendChild(actions);
+  root.appendChild(trigger);
+  root.appendChild(pop);
+  return { root, close };
+}
+
 function renderDraft(payload) {
   state.payload = payload;
   const d = payload.draft;
@@ -93,16 +367,11 @@ function renderDraft(payload) {
   if (d.needs_review.length) badges.appendChild(el("span", "badge", "待确认 " + d.needs_review.length + " 项"));
   box.appendChild(badges);
 
-  const deadlineInput = document.createElement("input");
-  deadlineInput.type = "datetime-local";
-  deadlineInput.className = "edit-input";
-  deadlineInput.value = d.deadline.end ? d.deadline.end.slice(0, 16) : "";
-  const deadlineRow = editRow("截止时间", deadlineInput, d.deadline.confidence, d.evidence.deadline);
-  deadlineInput.onchange = () => {
-    const value = deadlineInput.value.trim();
-    d.deadline.end = value ? (value.length === 16 ? value + ":00" : value) : null;
+  const deadlinePicker = createDeadlinePicker(d.deadline.end, (value) => {
+    d.deadline.end = value;
     markEdited(d, "deadline", deadlineRow);
-  };
+  });
+  const deadlineRow = editRow("截止时间", deadlinePicker.root, d.deadline.confidence, d.evidence.deadline);
   box.appendChild(deadlineRow);
 
   const materialsInput = document.createElement("textarea");
@@ -118,15 +387,15 @@ function renderDraft(payload) {
   box.appendChild(materialsRow);
 
   const submissionBox = el("div", "edit-stack");
-  const channelSelect = document.createElement("select");
-  channelSelect.className = "edit-input";
-  [["web", "线上"], ["email", "邮箱"], ["offline", "线下"], ["unknown", "未识别"]].forEach(([value, label]) => {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    channelSelect.appendChild(option);
-  });
-  channelSelect.value = d.submission.channel || "unknown";
+  const channelPicker = makePicker(
+    [["web", "线上"], ["email", "邮箱"], ["offline", "线下"], ["unknown", "未识别"]],
+    d.submission.channel || "unknown",
+    () => {
+      targetInput.value = targetValue();
+      syncSubmission();
+    },
+    "choice-picker",
+  );
   const targetInput = document.createElement("input");
   targetInput.className = "edit-input";
   targetInput.placeholder = "URL / 邮箱 / 地点";
@@ -139,19 +408,18 @@ function renderDraft(payload) {
   const submissionRow = editRow("提交方式", submissionBox, d.confidence.submission, d.evidence.submission);
   const syncSubmission = () => {
     const value = targetInput.value.trim();
-    d.submission.channel = channelSelect.value;
-    d.submission.url = channelSelect.value === "web" ? value : "";
-    d.submission.email = channelSelect.value === "email" ? value : "";
-    d.submission.location = channelSelect.value === "offline" ? value : "";
+    d.submission.channel = channelPicker.value;
+    d.submission.url = channelPicker.value === "web" ? value : "";
+    d.submission.email = channelPicker.value === "email" ? value : "";
+    d.submission.location = channelPicker.value === "offline" ? value : "";
     const detected = detectCampusText(value);
     if (detected) d.submission.campus = detected;
-    else if (channelSelect.value === "offline") d.submission.campus = defaultCampus;
+    else if (channelPicker.value === "offline") d.submission.campus = defaultCampus;
     campusLine.textContent = "校区：" + (CAMPUS[d.submission.campus] || CAMPUS.unknown);
     markEdited(d, "submission", submissionRow);
   };
-  channelSelect.onchange = () => { targetInput.value = targetValue(); syncSubmission(); };
   targetInput.oninput = syncSubmission;
-  submissionBox.appendChild(channelSelect);
+  submissionBox.appendChild(channelPicker.root);
   submissionBox.appendChild(targetInput);
   submissionBox.appendChild(campusLine);
   box.appendChild(submissionRow);
@@ -1119,6 +1387,22 @@ document.addEventListener("click", (event) => {
   campusPickers.forEach((picker) => {
     if (!picker.root.contains(event.target)) closeCampusMenu(picker);
   });
+  document.querySelectorAll(".choice-picker,.deadline-picker,.dt-unit-picker").forEach((root) => {
+    if (root.contains(event.target)) return;
+    Array.from(root.children).forEach((child) => {
+      if (child.classList.contains("theme-menu") || child.classList.contains("dt-pop")) child.hidden = true;
+    });
+    const trigger = root.querySelector(":scope > .theme-trigger");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  document.querySelectorAll(".choice-picker .theme-menu,.dt-unit-picker .theme-menu,.dt-pop")
+    .forEach((node) => { node.hidden = true; });
+  document.querySelectorAll(".choice-picker > .theme-trigger,.deadline-picker > .theme-trigger")
+    .forEach((trigger) => trigger.setAttribute("aria-expanded", "false"));
 });
 
 document.addEventListener("keydown", (event) => {
