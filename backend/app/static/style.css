@@ -418,3 +418,11 @@ textarea.edit-input{resize:vertical;line-height:1.5}
   -webkit-backdrop-filter:blur(10px) saturate(1.2);
   backdrop-filter:blur(10px) saturate(1.2);
 }
+
+.engine.off{
+  color:var(--red);
+  border-color:var(--red);
+  background:var(--red-bg);
+  font-weight:600;
+  box-shadow:0 0 0 3px var(--red-bg);
+}

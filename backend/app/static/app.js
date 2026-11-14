@@ -249,18 +249,22 @@ async function saveDraft(btn) {
 }
 
 async function loadHealth() {
+  const engine = $("engine");
   try {
-    const h = await api("/api/health");
-    const model = h.model || "deepseek-v4.1-flash";
-    const broken = h.llm_error && h.llm_error.error;
-    $("engine").textContent = h.llm
-      ? "大模型已接入 · " + model
-      : (broken ? "模型不可用 · 打开模型设置看原因" : "规则模式 · 未配模型 Key");
-    $("llm-note").textContent = h.llm
+    const h = await api("/api/llm-status");
+    const model = h.model || "deepseek-flash";
+    const connected = !!h.connected;
+    engine.textContent = connected ? "大模型已接入 · " + model : "大模型未接入";
+    engine.classList.toggle("off", !connected);
+    $("llm-note").textContent = connected
       ? "抽取由 " + model + " 补充，规则做证据校验"
-      : "未配置模型 Key，抽取全部由本地规则完成";
+      : (h.has_saved_key
+        ? "已保存 Key 但连接失败，抽取回退本地规则"
+        : "未填写个人 API Key，大模型未接入");
   } catch (e) {
-    $("engine").textContent = "后端未启动";
+    engine.textContent = "大模型未接入";
+    engine.classList.add("off");
+    $("llm-note").textContent = "无法读取模型连接状态";
   }
 }
 
@@ -274,9 +278,9 @@ async function loadSettings() {
     $("setting-email").textContent = s.email || "未绑定邮箱";
     $("setting-campus").value = s.campus && s.campus !== "unknown" ? s.campus : "haidian";
     syncCampusPickers();
-    $("setting-status").textContent = s.has_key
+    $("setting-status").textContent = s.has_saved_key
       ? "已保存 Key（尾号 " + s.key_hint + "），留空不会覆盖"
-      : "尚未保存 Key，当前走规则模式";
+      : "尚未保存个人 Key，大模型未接入";
     $("campus-section").classList.toggle("hidden", !!s.is_admin);
     const readonly = !!s.readonly;
     $("settings-readonly").classList.toggle("hidden", !readonly);
@@ -312,6 +316,7 @@ async function testConnection() {
   } finally {
     btn.disabled = false;
     btn.textContent = "测试连接";
+    loadHealth();
   }
 }
 
@@ -469,10 +474,10 @@ async function saveSettings(event) {
     });
     state.settings = Object.assign({}, state.settings, s);
     $("setting-key").value = "";
-    $("setting-status").textContent = s.has_key
+    $("setting-status").textContent = s.has_saved_key
       ? "已保存，Key 尾号 " + s.key_hint + "，点「测试连接」验证一次"
       : "已保存，但还没有 Key";
-    await loadHealth();
+    loadHealth();
   } catch (e) {
     $("setting-status").textContent = "保存失败：" + e.message;
   } finally {

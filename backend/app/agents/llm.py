@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -208,3 +209,57 @@ def probe(kind: str = "chat", timeout: int = 30, user_id: str | None = None) -> 
         out["error"] = result.get("error", "")
         out["body"] = (result.get("body") or "")[:400]
     return out
+
+
+# 主界面状态缓存：成功结果 5 分钟内复用，失败 1 分钟后重试，避免每次刷新都发请求
+_status_cache: dict[str, dict[str, Any]] = {}
+STATUS_TTL_OK = 300
+STATUS_TTL_FAIL = 60
+
+
+def clear_status(user_id: str) -> None:
+    """用户改了 Key/地址/模型后，下次进主界面重新探测。"""
+    _status_cache.pop(user_id, None)
+
+
+def remember_status(user_id: str, ok: bool, model: str = "", status: int = 0,
+                    error: str = "") -> None:
+    """把「测试连接」的结果写进缓存，主界面可以立即复用。"""
+    _status_cache[user_id] = {
+        "at": time.time(),
+        "value": {
+            "has_saved_key": True,
+            "connected": bool(ok),
+            "model": model or current_model(user_id),
+            "probe_status": int(status or 0),
+            "error": (error or "")[:200] if not ok else "",
+        },
+    }
+
+
+def user_status(user_id: str) -> dict[str, Any]:
+    """主界面使用：必须是当前用户自己保存的 Key，并且 /models 真实连通才算已接入。"""
+    saved = db.get_user_settings(user_id) or {}
+    if not (saved.get("api_key") or "").strip():
+        return {
+            "has_saved_key": False,
+            "connected": False,
+            "model": current_model(user_id),
+            "probe_status": 0,
+            "error": "",
+        }
+    cached = _status_cache.get(user_id)
+    if cached:
+        ttl = STATUS_TTL_OK if cached["value"]["connected"] else STATUS_TTL_FAIL
+        if time.time() - cached["at"] < ttl:
+            return dict(cached["value"])
+    result = probe(kind="models", timeout=5, user_id=user_id)
+    value = {
+        "has_saved_key": True,
+        "connected": bool(result.get("ok")),
+        "model": result.get("model") or current_model(user_id),
+        "probe_status": int(result.get("status") or 0),
+        "error": "" if result.get("ok") else (result.get("error") or result.get("reason") or "连接失败"),
+    }
+    _status_cache[user_id] = {"at": time.time(), "value": value}
+    return dict(value)

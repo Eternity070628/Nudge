@@ -25,7 +25,7 @@ from .models import (EmailChangeRequest, EventCreate, ExtractRequest, PasswordCh
 from .services import accounts, ics, mailer
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="1.2.4")
+app = FastAPI(title="Nudge · 校园截止管家", version="1.2.5")
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 db.init()
@@ -45,12 +45,14 @@ class SettingsUpdate(BaseModel):
 
 def _public_settings(user_id: str, user: dict[str, Any] | None = None) -> dict[str, Any]:
     base, model, key = llm.current(user_id)
+    saved = db.get_user_settings(user_id) or {}
     user = user or db.get_user(user_id) or {}
     campus = user.get("campus") or "unknown"
     return {
         "base_url": base,
         "model": model,
         "has_key": bool(key),
+        "has_saved_key": bool((saved.get("api_key") or "").strip()),
         "key_hint": ("****" + key[-4:]) if len(key) >= 4 else ("****" if key else ""),
         "mode": llm.mode(user_id) or "auto",
         "available": llm.available(user_id),
@@ -102,6 +104,12 @@ def health() -> dict[str, Any]:
     }
 
 
+@app.get("/api/llm-status")
+def api_llm_status(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """主界面专用：当前用户是否已保存 Key，且真实连接到模型服务。"""
+    return llm.user_status(user["id"])
+
+
 @app.get("/api/settings")
 def api_settings(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     return _public_settings(user["id"], user)
@@ -131,6 +139,7 @@ def api_save_settings(body: SettingsUpdate, user: dict[str, Any] = Depends(curre
     values["llm_mode"] = "model" if has_key and not body.clear_key else "auto"
     if values:
         db.save_user_settings(user["id"], values)
+    llm.clear_status(user["id"])
     return _public_settings(user["id"], db.get_user(user["id"]))
 
 
@@ -186,6 +195,8 @@ def api_llm_test(kind: str = Query("chat", pattern="^(chat|models)$"),
                  user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """真发一次最小请求，把状态码与报错原文摊开——排查「为什么没调到模型」。"""
     result = llm.probe(kind=kind, user_id=user["id"])
+    llm.remember_status(user["id"], bool(result.get("ok")), result.get("model", ""),
+                        int(result.get("status") or 0), result.get("error", ""))
     result["mode"] = llm.mode(user["id"]) or "auto"
     return result
 
