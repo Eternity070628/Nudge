@@ -13,6 +13,10 @@
   --backdrop:rgba(0,0,0,.62); --dialog-shadow:rgba(0,0,0,.45);
   --glass-bg:rgba(17,23,36,.58); --glass-border:rgba(255,255,255,.18);
   --glass-shadow:0 22px 54px rgba(0,0,0,.34); --glass-inset:inset 0 1px 0 rgba(255,255,255,.07);
+  --glass-btn-bg:rgba(255,255,255,.07); --glass-btn-border:rgba(255,255,255,.18);
+  --glass-btn-hover:rgba(255,255,255,.13);
+  --glass-primary-bg:linear-gradient(135deg,rgba(247,178,103,.88),rgba(244,132,95,.82));
+  --glass-primary-border:rgba(247,178,103,.55);
   --glow1:#3b2f63; --glow2:#5c3a1e; --glow-opacity:.35;
   --cat-bg:rgba(94,234,212,.07); --cat-border:rgba(94,234,212,.3);
   --ok-bg:rgba(74,222,128,.1); --amber-bg:rgba(247,178,103,.12); --red-bg:rgba(255,107,107,.12);
@@ -38,6 +42,10 @@
   --backdrop:rgba(15,23,42,.35); --dialog-shadow:rgba(31,41,55,.2);
   --glass-bg:rgba(255,255,255,.62); --glass-border:rgba(20,30,50,.2);
   --glass-shadow:0 22px 54px rgba(31,41,55,.18); --glass-inset:inset 0 1px 0 rgba(255,255,255,.9);
+  --glass-btn-bg:rgba(255,255,255,.55); --glass-btn-border:rgba(20,30,50,.18);
+  --glass-btn-hover:rgba(255,255,255,.82);
+  --glass-primary-bg:linear-gradient(135deg,rgba(217,119,6,.9),rgba(234,88,12,.85));
+  --glass-primary-border:rgba(217,119,6,.5);
   --glow1:rgba(247,178,103,.25); --glow2:rgba(96,165,250,.16); --glow-opacity:.45;
   --cat-bg:rgba(15,118,110,.08); --cat-border:rgba(15,118,110,.28);
   --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(217,119,6,.12); --red-bg:rgba(220,38,38,.1);
@@ -64,6 +72,10 @@
     --backdrop:rgba(15,23,42,.35); --dialog-shadow:rgba(31,41,55,.2);
     --glass-bg:rgba(255,255,255,.62); --glass-border:rgba(20,30,50,.2);
     --glass-shadow:0 22px 54px rgba(31,41,55,.18); --glass-inset:inset 0 1px 0 rgba(255,255,255,.9);
+    --glass-btn-bg:rgba(255,255,255,.55); --glass-btn-border:rgba(20,30,50,.18);
+    --glass-btn-hover:rgba(255,255,255,.82);
+    --glass-primary-bg:linear-gradient(135deg,rgba(217,119,6,.9),rgba(234,88,12,.85));
+    --glass-primary-border:rgba(217,119,6,.5);
     --glow1:rgba(247,178,103,.25); --glow2:rgba(96,165,250,.16); --glow-opacity:.45;
     --cat-bg:rgba(15,118,110,.08); --cat-border:rgba(15,118,110,.28);
     --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(217,119,6,.12); --red-bg:rgba(220,38,38,.1);
@@ -351,10 +363,58 @@ textarea.edit-input{resize:vertical;line-height:1.5}
   .user-actions{justify-content:flex-start}
 }
 
-.panel,.auth-card,.stat,.ev,.user-row,.admin-detail,.compare-col,.settings-dialog{
+.panel,.auth-card,.stat,.ev,.user-row,.admin-detail,.compare-col,.detail-event,.settings-dialog{
   background:var(--glass-bg);
   border:1px solid var(--glass-border);
   box-shadow:var(--glass-inset),var(--glass-shadow);
   -webkit-backdrop-filter:blur(18px) saturate(1.15);
   backdrop-filter:blur(18px) saturate(1.15);
+}
+
+.brief,.warn{
+  -webkit-backdrop-filter:blur(14px) saturate(1.15);
+  backdrop-filter:blur(14px) saturate(1.15);
+  box-shadow:var(--glass-inset),0 10px 24px var(--shadow);
+}
+
+.btn,.show-pass{
+  background:var(--glass-btn-bg);
+  border:1px solid var(--glass-btn-border);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  backdrop-filter:blur(14px) saturate(1.2);
+  box-shadow:var(--glass-inset),0 8px 20px var(--shadow);
+}
+.btn:hover{background:var(--glass-btn-hover)}
+.btn.primary,.btn.primary:hover{
+  background:var(--glass-primary-bg);
+  border-color:var(--glass-primary-border);
+  color:var(--btn-ink);
+}
+.btn.ghost,.btn.ghost:hover{
+  background:var(--glass-btn-bg);
+  border-color:var(--glass-btn-border);
+  color:var(--ink);
+}
+.btn.ghost:hover,.show-pass:hover{background:var(--glass-btn-hover)}
+.theme-trigger{
+  background:var(--glass-btn-bg);
+  border-color:var(--glass-btn-border);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  backdrop-filter:blur(14px) saturate(1.2);
+}
+.auth-tabs,.seg{
+  background:var(--glass-btn-bg);
+  border-color:var(--glass-btn-border);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  backdrop-filter:blur(14px) saturate(1.2);
+}
+.auth-tab.active,.seg button.active{
+  background:var(--glass-btn-hover);
+  -webkit-backdrop-filter:blur(12px) saturate(1.2);
+  backdrop-filter:blur(12px) saturate(1.2);
+}
+.ev .d .x,.ev .d .del{
+  background:var(--glass-btn-bg);
+  -webkit-backdrop-filter:blur(10px) saturate(1.2);
+  backdrop-filter:blur(10px) saturate(1.2);
 }
