@@ -11,6 +11,8 @@
   --mat-ink:#cbd5e1; --brief-bg:rgba(94,234,212,.05); --brief-border:rgba(94,234,212,.16);
   --brief-ink:#cfe9e4; --footer-ink:#5b6784; --shadow:rgba(0,0,0,.28);
   --backdrop:rgba(0,0,0,.62); --dialog-shadow:rgba(0,0,0,.45);
+  --glass-bg:rgba(17,23,36,.58); --glass-border:rgba(255,255,255,.18);
+  --glass-shadow:0 22px 54px rgba(0,0,0,.34); --glass-inset:inset 0 1px 0 rgba(255,255,255,.07);
   --glow1:#3b2f63; --glow2:#5c3a1e; --glow-opacity:.35;
   --cat-bg:rgba(94,234,212,.07); --cat-border:rgba(94,234,212,.3);
   --ok-bg:rgba(74,222,128,.1); --amber-bg:rgba(247,178,103,.12); --red-bg:rgba(255,107,107,.12);
@@ -33,6 +35,8 @@
   --mat-ink:#334155; --brief-bg:rgba(15,118,110,.08); --brief-border:rgba(15,118,110,.22);
   --brief-ink:#134e4a; --footer-ink:#5b6478; --shadow:rgba(31,41,55,.14);
   --backdrop:rgba(15,23,42,.35); --dialog-shadow:rgba(31,41,55,.2);
+  --glass-bg:rgba(255,255,255,.62); --glass-border:rgba(20,30,50,.2);
+  --glass-shadow:0 22px 54px rgba(31,41,55,.18); --glass-inset:inset 0 1px 0 rgba(255,255,255,.9);
   --glow1:rgba(247,178,103,.25); --glow2:rgba(96,165,250,.16); --glow-opacity:.45;
   --cat-bg:rgba(15,118,110,.08); --cat-border:rgba(15,118,110,.28);
   --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(217,119,6,.12); --red-bg:rgba(220,38,38,.1);
@@ -103,6 +107,10 @@ body{
 .theme-option[aria-selected="true"]{background:var(--menu-selected-bg);color:var(--menu-selected-ink);font-weight:600}
 .theme-option[aria-selected="true"]::after{content:"✓";font-size:11px}
 .theme-option:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.campus-picker{display:block;margin-top:6px}
+.campus-picker .theme-trigger{width:100%}
+.campus-picker .theme-menu{left:0;right:auto;min-width:100%}
+.campus-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .top-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .btn-mini{padding:7px 12px;font-size:12px;border-radius:999px}
 .settings-dialog{width:min(560px,94vw);max-height:86vh;overflow:auto;padding:22px;border:1px solid var(--line);border-radius:18px;
@@ -333,4 +341,12 @@ textarea.edit-input{resize:vertical;line-height:1.5}
   .user-row{grid-template-columns:20px 1fr;gap:6px}
   .user-check{grid-row:span 4}
   .user-actions{justify-content:flex-start}
+}
+
+.panel,.auth-card,.stat,.ev,.user-row,.admin-detail,.compare-col,.settings-dialog{
+  background:var(--glass-bg);
+  border:1px solid var(--glass-border);
+  box-shadow:var(--glass-inset),var(--glass-shadow);
+  -webkit-backdrop-filter:blur(18px) saturate(1.15);
+  backdrop-filter:blur(18px) saturate(1.15);
 }

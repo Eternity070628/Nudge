@@ -273,6 +273,7 @@ async function loadSettings() {
     $("setting-key").value = "";
     $("setting-email").textContent = s.email || "未绑定邮箱";
     $("setting-campus").value = s.campus && s.campus !== "unknown" ? s.campus : "haidian";
+    syncCampusPickers();
     $("setting-status").textContent = s.has_key
       ? "已保存 Key（尾号 " + s.key_hint + "），留空不会覆盖"
       : "尚未保存 Key，当前走规则模式";
@@ -374,6 +375,8 @@ async function saveCampus(button) {
     });
     state.settings = Object.assign({}, state.settings, s);
     if (state.user) state.user.campus = s.campus;
+    $("setting-campus").value = s.campus;
+    syncCampusPickers();
     setAuthStatus("setting-campus-status", "默认校区已保存为 " + (s.campus_label || s.campus), "success");
   } catch (e) {
     setAuthStatus("setting-campus-status", "保存失败：" + e.message, "error");
@@ -983,6 +986,7 @@ function closeAllThemeMenus() {
 
 function openThemeMenu(picker) {
   closeAllThemeMenus();
+  closeAllCampusMenus();
   picker.menu.hidden = false;
   picker.trigger.setAttribute("aria-expanded", "true");
   const selected = picker.options.find((option) => option.getAttribute("aria-selected") === "true");
@@ -1028,18 +1032,98 @@ function setupThemePicker(root) {
 document.querySelectorAll("[data-theme-picker]").forEach(setupThemePicker);
 applyTheme(document.documentElement.dataset.theme || "system");
 
+const campusNames = {
+  haidian: "海淀校区（本部 / 西土城）",
+  shahe: "沙河校区（昌平）",
+  hainan: "海南校区",
+};
+const campusPickers = [];
+
+function syncCampusPickers() {
+  const value = $("setting-campus").value || "haidian";
+  campusPickers.forEach((picker) => {
+    picker.label.textContent = campusNames[value] || campusNames.haidian;
+    picker.options.forEach((option) => {
+      option.setAttribute("aria-selected", String(option.dataset.campus === value));
+    });
+  });
+}
+
+function closeCampusMenu(picker) {
+  picker.menu.hidden = true;
+  picker.trigger.setAttribute("aria-expanded", "false");
+}
+
+function closeAllCampusMenus() {
+  campusPickers.forEach(closeCampusMenu);
+}
+
+function openCampusMenu(picker) {
+  closeAllThemeMenus();
+  closeAllCampusMenus();
+  picker.menu.hidden = false;
+  picker.trigger.setAttribute("aria-expanded", "true");
+  const selected = picker.options.find((option) => option.getAttribute("aria-selected") === "true");
+  if (selected) selected.focus();
+}
+
+function setupCampusPicker(root) {
+  const picker = {
+    root,
+    trigger: root.querySelector(".theme-trigger"),
+    menu: root.querySelector(".theme-menu"),
+    label: root.querySelector(".campus-label"),
+    options: Array.from(root.querySelectorAll(".theme-option")),
+  };
+  picker.trigger.onclick = () => {
+    if (picker.menu.hidden) openCampusMenu(picker);
+    else closeCampusMenu(picker);
+  };
+  picker.options.forEach((option) => {
+    option.onclick = () => {
+      $("setting-campus").value = option.dataset.campus;
+      syncCampusPickers();
+      closeCampusMenu(picker);
+      picker.trigger.focus();
+    };
+  });
+  picker.trigger.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openCampusMenu(picker);
+    }
+  });
+  picker.menu.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const current = picker.options.indexOf(document.activeElement);
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const next = (current + delta + picker.options.length) % picker.options.length;
+    picker.options[next].focus();
+  });
+  campusPickers.push(picker);
+}
+
+document.querySelectorAll("[data-campus-picker]").forEach(setupCampusPicker);
+syncCampusPickers();
+
 document.addEventListener("click", (event) => {
   themePickers.forEach((picker) => {
     if (!picker.root.contains(event.target)) closeThemeMenu(picker);
+  });
+  campusPickers.forEach((picker) => {
+    if (!picker.root.contains(event.target)) closeCampusMenu(picker);
   });
 });
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  const open = themePickers.filter((picker) => !picker.menu.hidden);
-  if (!open.length) return;
+  const openTheme = themePickers.filter((picker) => !picker.menu.hidden);
+  const openCampus = campusPickers.filter((picker) => !picker.menu.hidden);
+  if (!openTheme.length && !openCampus.length) return;
   closeAllThemeMenus();
-  open[0].trigger.focus();
+  closeAllCampusMenus();
+  (openTheme[0] || openCampus[0]).trigger.focus();
 });
 
 $("settings-btn").onclick = openSettings;

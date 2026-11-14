@@ -209,11 +209,18 @@
     <section class="settings-section" id="campus-section">
       <h4>默认校区</h4>
       <p class="hint">通知里没写校区时按这里判断；通知明确写了校区，则以通知为准。</p>
-      <select id="setting-campus" class="edit-input">
-        <option value="haidian">海淀校区（本部 / 西土城）</option>
-        <option value="shahe">沙河校区（昌平）</option>
-        <option value="hainan">海南校区</option>
-      </select>
+      <div class="theme-picker campus-picker" data-campus-picker>
+        <button class="theme-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="默认校区">
+          <span class="campus-label">海淀校区（本部 / 西土城）</span>
+          <span class="chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="theme-menu" role="listbox" aria-label="默认校区" hidden>
+          <button class="theme-option" type="button" role="option" data-campus="haidian">海淀校区（本部 / 西土城）</button>
+          <button class="theme-option" type="button" role="option" data-campus="shahe">沙河校区（昌平）</button>
+          <button class="theme-option" type="button" role="option" data-campus="hainan">海南校区</button>
+        </div>
+        <input type="hidden" id="setting-campus" />
+      </div>
       <div class="actions">
         <button class="btn ghost btn-mini" type="button" id="setting-campus-save">保存校区</button>
       </div>
