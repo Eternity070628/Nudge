@@ -17,6 +17,7 @@
   --cat-bg:rgba(94,234,212,.07); --cat-border:rgba(94,234,212,.3);
   --ok-bg:rgba(74,222,128,.1); --amber-bg:rgba(247,178,103,.12); --red-bg:rgba(255,107,107,.12);
   --step-border:rgba(247,178,103,.28); --ev-x-border:rgba(94,234,212,.28); --ev-x-bg:rgba(94,234,212,.1);
+  --ev-del-border:rgba(255,107,107,.32);
   --menu-bg:#151b26; --menu-border:rgba(255,255,255,.12); --menu-hover:rgba(255,255,255,.06);
   --menu-selected-bg:rgba(247,178,103,.14); --menu-selected-ink:#f7b267; --menu-shadow:0 18px 40px rgba(0,0,0,.45);
   color-scheme:dark;
@@ -41,6 +42,7 @@
   --cat-bg:rgba(15,118,110,.08); --cat-border:rgba(15,118,110,.28);
   --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(217,119,6,.12); --red-bg:rgba(220,38,38,.1);
   --step-border:rgba(217,119,6,.25); --ev-x-border:rgba(15,118,110,.28); --ev-x-bg:rgba(15,118,110,.1);
+    --ev-del-border:rgba(220,38,38,.28);
   --menu-bg:#ffffff; --menu-border:rgba(20,30,50,.14); --menu-hover:rgba(15,23,42,.05);
   --menu-selected-bg:rgba(217,119,6,.12); --menu-selected-ink:#d97706; --menu-shadow:0 18px 40px rgba(31,41,55,.16);
   color-scheme:light;
@@ -66,6 +68,7 @@
     --cat-bg:rgba(15,118,110,.08); --cat-border:rgba(15,118,110,.28);
     --ok-bg:rgba(21,128,61,.1); --amber-bg:rgba(217,119,6,.12); --red-bg:rgba(220,38,38,.1);
     --step-border:rgba(217,119,6,.25); --ev-x-border:rgba(15,118,110,.28); --ev-x-bg:rgba(15,118,110,.1);
+    --ev-del-border:rgba(220,38,38,.28);
   --menu-bg:#ffffff; --menu-border:rgba(20,30,50,.14); --menu-hover:rgba(15,23,42,.05);
   --menu-selected-bg:rgba(217,119,6,.12); --menu-selected-ink:#d97706; --menu-shadow:0 18px 40px rgba(31,41,55,.16);
     color-scheme:light;
@@ -223,7 +226,7 @@ html[data-page="login"] #admin-screen{display:none}
 .ev .m{font-size:11px;color:var(--dim);margin-top:4px}
 .ev .d{white-space:nowrap;font-size:12px;color:var(--dim);text-align:right}
 .ev .d b{display:block;font-size:15px;color:var(--ink)}
-.ev .d .x{display:inline-block;margin-top:7px;font-size:10.5px;color:var(--teal);
+.ev .d .x{display:inline-block;margin-top:7px;margin-left:12px;font-size:10.5px;color:var(--teal);
   padding:2px 8px;border:1px solid var(--ev-x-border);border-radius:999px;opacity:.55;
   transition:opacity .15s,background .15s}
 .ev:hover .d .x{opacity:1}
@@ -291,8 +294,11 @@ textarea.edit-input{resize:vertical;line-height:1.5}
 .edited-badge.hidden{display:none}
 .ev.done{opacity:.45}
 .ev.done .t{text-decoration:line-through}
-.ev .d .del{display:inline-block;margin-top:6px;font-size:10.5px;color:var(--red);opacity:.7;cursor:pointer}
-.ev .d .del:hover{opacity:1;text-decoration:underline}
+.ev .d .del{display:inline-block;margin-top:7px;margin-left:12px;font-size:10.5px;color:var(--red);
+  padding:2px 8px;border:1px solid var(--ev-del-border);border-radius:999px;opacity:.55;
+  cursor:pointer;transition:opacity .15s,background .15s}
+.ev:hover .d .del{opacity:1}
+.ev .d .del:hover{background:var(--red-bg)}
 @media(max-width:620px){
   .stats{grid-template-columns:repeat(2,1fr)}
   .bottom{padding:0 20px 24px;flex-direction:column}
