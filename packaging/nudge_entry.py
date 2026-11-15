@@ -68,6 +68,9 @@ def setup_environment():
     data.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("NUDGE_DATA", str(data))
     os.environ["NUDGE_PACKAGED"] = "1"
+    if getattr(sys, "frozen", False):
+        # 安装版默认接入现有 PythonAnywhere 中心；管理端保存的地址可覆盖它
+        os.environ.setdefault("NUDGE_CENTRAL_URL", "https://eternity0628.pythonanywhere.com")
 
     static = None
     for candidate in (root / "backend" / "app" / "static", root / "app" / "static"):

@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { draft: null, payload: null, user: null, settings: null, passwordMethod: "old", adminSelected: new Set() };
+const state = { draft: null, payload: null, user: null, settings: null, passwordMethod: "old", adminSelected: new Set(), bind: null };
 const CAT = { competition: "竞赛", scholarship: "奖学金", lecture: "讲座", exam: "考试", affairs: "办事", activity: "活动", other: "其他" };
 const CAMPUS = { haidian: "海淀校区", shahe: "沙河校区", hainan: "海南校区", unknown: "未识别" };
 const URG = { overdue: "已过期", today: "今天截止", urgent: "天内截止", soon: "本周", later: "稍后", unknown: "待确认" };
@@ -562,7 +562,11 @@ async function loadSettings() {
       : "尚未保存个人 Key，大模型未接入";
     $("campus-section").classList.toggle("hidden", !!s.is_admin);
     $("mail-section").classList.toggle("hidden", !s.is_admin);
-    if (s.is_admin) loadMailSettings();
+    $("central-section").classList.toggle("hidden", !s.is_admin);
+    if (s.is_admin) {
+      loadMailSettings();
+      loadCentralSettings();
+    }
     const readonly = !!s.readonly;
     $("settings-readonly").classList.toggle("hidden", !readonly);
     $("settings-readonly").textContent = readonly
@@ -664,6 +668,79 @@ async function testMailSettings() {
   }
 }
 
+async function loadCentralSettings() {
+  try {
+    const data = await api("/api/admin/central");
+    $("central-url").value = data.url || "";
+    $("central-state").textContent = data.enabled
+      ? "当前：共享账号模式 · 本机实例 " + data.instance_id
+      : "当前：单机模式 · 账号只存在本机";
+  } catch (e) {
+    $("central-state").textContent = "读取失败：" + e.message;
+  }
+}
+
+async function saveCentralSettings() {
+  const status = "central-status";
+  try {
+    const data = await api("/api/admin/central", {
+      method: "POST",
+      body: JSON.stringify({ url: $("central-url").value.trim() }),
+    });
+    setAuthStatus(status, data.enabled
+      ? "已启用共享账号服务；请退出并重新登录以取得中心会话"
+      : "已切回单机模式", "success");
+    await loadCentralSettings();
+  } catch (e) {
+    setAuthStatus(status, "保存失败：" + e.message, "error");
+  }
+}
+
+function presenceText(userId, presence) {
+  const rows = (presence || []).filter((item) => item.user_id === userId);
+  if (!rows.length) return "暂无实例心跳";
+  return rows.map((item) => {
+    const flags = [];
+    if (item.event_count) flags.push(item.event_count + " 事件");
+    if (item.has_key) flags.push("Key");
+    if (item.campus) flags.push(item.campus);
+    return (item.instance_id || "本机") + " · " + shortTime(item.last_seen) + (flags.length ? " · " + flags.join(" · ") : "");
+  }).join("；");
+}
+
+async function loadGlobalUsers() {
+  const box = $("admin-global");
+  box.classList.remove("hidden");
+  box.innerHTML = "加载全局用户状态…";
+  try {
+    const data = await api("/api/admin/global-users");
+    if (!data.central) {
+      box.innerHTML = "当前是单机模式，未配置共享账号服务。";
+      return;
+    }
+    box.innerHTML = "";
+    const head = el("div", "detail-head");
+    head.appendChild(el("b", null, "全局用户状态 · " + data.users.length + " 个中心账号"));
+    const close = el("button", "btn ghost btn-mini", "关闭");
+    close.type = "button";
+    close.onclick = () => box.classList.add("hidden");
+    head.appendChild(close);
+    box.appendChild(head);
+    data.users.forEach((user) => {
+      const row = el("div", "global-user");
+      row.appendChild(el("b", null, (user.name || "未命名") + (user.is_admin ? " · 管理员" : "")));
+      row.appendChild(el("span", "tiny", user.email || "无邮箱"));
+      const status = el("span", "user-status " + (user.status_key || "idle"));
+      status.appendChild(el("b", null, user.status || "未活跃"));
+      row.appendChild(status);
+      row.appendChild(el("small", null, presenceText(user.id, data.presence)));
+      box.appendChild(row);
+    });
+  } catch (e) {
+    box.textContent = "读取全局用户失败：" + e.message;
+  }
+}
+
 async function testConnection() {
   const btn = $("setting-test");
   const box = $("setting-status");
@@ -701,7 +778,7 @@ function openSettings() {
   const dialog = $("settings-dialog");
   if (!dialog.open) dialog.showModal();
   setPasswordMethod("old");
-  ["setting-campus-status", "setting-email-status", "setting-password-status", "mail-status"].forEach((id) => {
+  ["setting-campus-status", "setting-email-status", "setting-password-status", "mail-status", "central-status"].forEach((id) => {
     setAuthStatus(id, "");
   });
   loadSettings();
@@ -1277,14 +1354,64 @@ async function handleLogin(event) {
   const status = $("login-status");
   setAuthStatus(status, "登录中…", "info");
   try {
+    const email = $("login-email").value.trim();
+    const password = $("login-password").value;
     const data = await api("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email: $("login-email").value.trim(), password: $("login-password").value }),
+      body: JSON.stringify({ email, password }),
     });
+    if (data.bind_required) {
+      state.bind = { email, password };
+      $("bind-target").textContent = email;
+      $("bind-code").value = data.dev_code || "";
+      setAuthStatus("bind-status", data.notice || "已发送验证码，10 分钟内有效", "info");
+      $("bind-dialog").showModal();
+      return;
+    }
     if (data.user.is_admin) location.href = "/admin";
     else location.href = "/app";
   } catch (e) {
     setAuthStatus(status, "登录失败：" + e.message, "error");
+  }
+}
+
+async function sendBindCode() {
+  if (!state.bind) return;
+  const button = $("bind-send");
+  button.disabled = true;
+  button.textContent = "发送中…";
+  try {
+    const data = await api("/api/auth/bind-code", {
+      method: "POST",
+      body: JSON.stringify({ email: state.bind.email, password: state.bind.password }),
+    });
+    if (data.dev_code) $("bind-code").value = data.dev_code;
+    setAuthStatus("bind-status", (data.notice || "验证码已发送") + (data.dev_code ? "，验证码 " + data.dev_code : ""), "info");
+    startCountdown(button);
+  } catch (e) {
+    setAuthStatus("bind-status", "发送失败：" + e.message, "error");
+    button.disabled = false;
+    button.textContent = "发送验证码";
+  }
+}
+
+async function handleBind(event) {
+  event.preventDefault();
+  if (!state.bind) return;
+  const button = $("bind-submit");
+  button.disabled = true;
+  try {
+    const data = await api("/api/auth/bind", {
+      method: "POST",
+      body: JSON.stringify({ email: state.bind.email, password: state.bind.password, code: $("bind-code").value.trim() }),
+    });
+    $("bind-dialog").close();
+    if (data.user.is_admin) location.href = "/admin";
+    else location.href = "/app";
+  } catch (e) {
+    setAuthStatus("bind-status", "绑定失败：" + e.message, "error");
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -1589,6 +1716,11 @@ $("mail-test").onclick = testMailSettings;
 $("mail-transport").onchange = toggleMailFields;
 $("admin-edit-close").onclick = () => $("admin-edit-dialog").close();
 $("admin-edit-form").onsubmit = saveAdminEdit;
+$("central-save").onclick = saveCentralSettings;
+$("admin-global").onclick = loadGlobalUsers;
+$("bind-close").onclick = () => $("bind-dialog").close();
+$("bind-send").onclick = sendBindCode;
+$("bind-form").onsubmit = handleBind;
 
 $("admin-btn").onclick = () => { location.href = "/admin"; };
 $("admin-back").onclick = () => { location.href = "/app"; };

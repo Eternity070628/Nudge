@@ -17,7 +17,7 @@
   }
 })();
 </script>
-<link rel="stylesheet" href="/static/style.css?v=1.3.1" />
+<link rel="stylesheet" href="/static/style.css?v=2.0.0beta" />
 </head>
 <body>
 <div class="glow g1"></div><div class="glow g2"></div>
@@ -354,6 +354,37 @@
       </label>
       <p class="auth-status" id="mail-status"></p>
     </section>
+
+    <section class="settings-section hidden" id="central-section">
+      <h4>共享账号服务</h4>
+      <p class="hint">填 PythonAnywhere 中心地址后，本机注册/登录/验证码会转发到中心；账号跨实例共享，事件仍只留本机。留空表示单机模式。</p>
+      <label>中心 URL
+        <input id="central-url" autocomplete="off" placeholder="https://eternity0628.pythonanywhere.com" />
+      </label>
+      <p class="hint" id="central-state"></p>
+      <div class="actions">
+        <button class="btn ghost btn-mini" type="button" id="central-save">保存共享账号服务</button>
+      </div>
+      <p class="auth-status" id="central-status"></p>
+    </section>
+  </form>
+</dialog>
+
+<dialog id="bind-dialog" class="settings-dialog">
+  <form id="bind-form">
+    <div class="settings-head">
+      <h3>首次绑定共享账号</h3>
+      <button class="btn ghost btn-mini" type="button" id="bind-close">关闭</button>
+    </div>
+    <p class="hint">本机已有账号，但共享账号中心还没有它。验证一次邮箱后即可在其它电脑登录。</p>
+    <p class="hint" id="bind-target"></p>
+    <label>邮箱验证码
+      <span class="code-row"><input id="bind-code" inputmode="numeric" maxlength="6" /><button class="btn ghost code-btn" type="button" id="bind-send">发送验证码</button></span>
+    </label>
+    <p class="auth-status" id="bind-status"></p>
+    <div class="actions">
+      <button class="btn primary" type="submit" id="bind-submit">绑定并登录</button>
+    </div>
   </form>
 </dialog>
 
@@ -411,15 +442,17 @@
         <h2>用户管理</h2>
         <div class="panel-tools">
           <span class="hint" id="admin-count"></span>
+          <button class="btn ghost btn-mini" id="admin-global" type="button">全局用户状态</button>
           <button class="btn ghost btn-mini" id="admin-compare" type="button">对比选中 (0)</button>
         </div>
       </div>
       <div id="admin-users" class="admin-list"></div>
+      <div id="admin-global" class="admin-detail hidden"></div>
       <div id="admin-detail" class="admin-detail hidden"></div>
     </section>
   </main>
 </section>
 
-<script src="/static/app.js?v=1.3.1"></script>
+<script src="/static/app.js?v=2.0.0beta"></script>
 </body>
 </html>

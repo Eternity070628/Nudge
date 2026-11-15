@@ -21,16 +21,17 @@ from . import config, db
 from .agents import extractor, llm, matcher, planner, verifier
 from .auth import admin_router, current_user, require_admin, router as auth_router
 from .config import BASE_DIR
-from .models import (AdminUserUpdate, EmailChangeRequest, EventCreate, ExtractRequest,
-                     MailSettingsUpdate, MailTestRequest, PasswordChangeRequest,
-                     SettingsCodeRequest)
-from .services import accounts, ics, mailer
+from .models import (AdminUserUpdate, CentralPresence, CentralSettingsUpdate,
+                     EmailChangeRequest, EventCreate, ExtractRequest, MailSettingsUpdate,
+                     MailTestRequest, PasswordChangeRequest, SettingsCodeRequest)
+from .services import accounts, central, ics, mailer
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="1.3.1")
+app = FastAPI(title="Nudge · 校园截止管家", version="2.0.0beta")
 STATIC_DIR = Path(os.getenv("NUDGE_STATIC") or (BASE_DIR / "app" / "static"))
 
 db.init()
+central.configure()
 mailer.apply_db_settings()
 # 部署到新机器时，环境变量里的 refresh token 会在启动时落进本机数据库
 mailer.ensure_token()
@@ -106,6 +107,41 @@ def health() -> dict[str, Any]:
         "commit": _commit(),
         "time": datetime.now().isoformat(timespec="seconds"),
     }
+
+
+@app.post("/api/central/presence")
+def api_central_presence(body: CentralPresence,
+                         user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """中心端接收各实例心跳；只记录状态，不同步本地事件。"""
+    db.upsert_presence(user["id"], body.instance_id, body.event_count, body.has_key, body.campus)
+    db.touch_last_seen(user["id"])
+    return {"ok": True}
+
+
+@app.get("/api/central/users")
+def api_central_users(_: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """中心管理员看所有账号和各实例在线状态。"""
+    return {"users": db.list_users(), "presence": db.list_presence()}
+
+
+@app.get("/api/admin/central")
+def api_admin_central(_: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    return {
+        "url": central.url(),
+        "enabled": central.enabled(),
+        "instance_id": (db.get_settings() or {}).get("instance_id", ""),
+    }
+
+
+@app.post("/api/admin/central")
+def api_admin_central_save(body: CentralSettingsUpdate,
+                           _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    value = (body.url or "").strip().rstrip("/")
+    if value and not value.startswith(("http://", "https://")):
+        raise HTTPException(400, "共享账号服务地址需要以 http:// 或 https:// 开头")
+    db.save_settings({"nudge_central_url": value})
+    central.configure()
+    return {"ok": True, "url": central.url(), "enabled": central.enabled()}
 
 
 @app.get("/api/llm-status")
@@ -229,9 +265,24 @@ def api_save_settings(body: SettingsUpdate, user: dict[str, Any] = Depends(curre
     return _public_settings(user["id"], db.get_user(user["id"]))
 
 
+def _central_token_or_403(user: dict[str, Any]) -> str:
+    if not central.enabled():
+        return ""
+    token = central.session_token(user["id"])
+    if not token:
+        raise HTTPException(403, "请退出后重新登录，以取得共享账号中心会话")
+    return token
+
+
 @app.post("/api/settings/code")
 def api_settings_code(body: SettingsCodeRequest, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     _reject_demo(user)
+    if central.enabled():
+        token = _central_token_or_403(user)
+        try:
+            return central.settings_code(token, body.target, body.new_email)
+        except central.CentralError as error:
+            raise HTTPException(error.status if 400 <= error.status <= 599 else 502, str(error)) from error
     purposes = {"old": "change_email_old", "new": "change_email_new", "password": "change_password"}
     purpose = purposes[body.target]
     email = (body.new_email if body.target == "new" else user.get("email") or "").strip()
@@ -257,6 +308,16 @@ def api_settings_code(body: SettingsCodeRequest, user: dict[str, Any] = Depends(
 def api_settings_email(body: EmailChangeRequest,
                        user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     _reject_demo(user)
+    if central.enabled():
+        token = _central_token_or_403(user)
+        try:
+            result = central.settings_email(token, body.old_code, body.new_email, body.new_code)
+        except central.CentralError as error:
+            raise HTTPException(error.status if 400 <= error.status <= 599 else 502, str(error)) from error
+        central_user = (result or {}).get("user") or {}
+        if central_user.get("email"):
+            db.update_email(user["id"], central_user["email"])
+        return {"ok": True, "user": accounts.public_user(db.get_user(user["id"]))}
     try:
         updated = accounts.change_email(user["id"], body.old_code, body.new_email, body.new_code)
     except ValueError as error:
@@ -268,6 +329,14 @@ def api_settings_email(body: EmailChangeRequest,
 def api_settings_password(body: PasswordChangeRequest,
                           user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     _reject_demo(user)
+    if central.enabled():
+        token = _central_token_or_403(user)
+        try:
+            central.settings_password(token, body.method, body.old_password,
+                                      body.code, body.password, body.confirm)
+        except central.CentralError as error:
+            raise HTTPException(error.status if 400 <= error.status <= 599 else 502, str(error)) from error
+        return {"ok": True}
     try:
         accounts.change_password(user["id"], body.method, body.old_password,
                                  body.code, body.password, body.confirm)

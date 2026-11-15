@@ -478,3 +478,11 @@ textarea.edit-input{resize:vertical;line-height:1.5}
   .user-check{grid-row:span 5}
   .user-actions{grid-column:2 / 4}
 }
+
+.global-user{display:grid;grid-template-columns:minmax(120px,1fr) minmax(150px,1.3fr) 84px minmax(200px,1.5fr);
+  gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--glass-bg)}
+.global-user small{color:var(--dim);font-size:10.5px;line-height:1.5}
+@media(max-width:760px){
+  .global-user{grid-template-columns:1fr 1fr;gap:6px}
+  .global-user small{grid-column:1 / 3}
+}

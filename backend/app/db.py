@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS user_settings (
   user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
   PRIMARY KEY (user_id, key)
 );
+CREATE TABLE IF NOT EXISTS central_sessions (
+  user_id TEXT PRIMARY KEY, token TEXT NOT NULL, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS central_presence (
+  user_id TEXT NOT NULL, instance_id TEXT NOT NULL, last_seen TEXT,
+  event_count INTEGER DEFAULT 0, has_key INTEGER DEFAULT 0, campus TEXT,
+  PRIMARY KEY (user_id, instance_id)
+);
 """
 
 ADMIN_EMAIL = "Eternity070628@bupt.edu.cn"
@@ -72,12 +80,17 @@ def init() -> None:
             ("disabled", "INTEGER DEFAULT 0"),
             ("campus", "TEXT"),
             ("last_seen", "TEXT"),
+            ("central_id", "TEXT"),
         ):
             try:
                 c.execute(f"ALTER TABLE users ADD COLUMN {column} {ddl}")
             except sqlite3.OperationalError:
                 pass
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_central ON users(central_id)")
+        instance = c.execute("SELECT value FROM settings WHERE key='instance_id'").fetchone()
+        if not instance:
+            c.execute("INSERT INTO settings(key,value) VALUES('instance_id',?)", (uuid.uuid4().hex[:12],))
         try:
             c.execute("ALTER TABLE events ADD COLUMN campus TEXT")
         except sqlite3.OperationalError:
@@ -349,6 +362,91 @@ def update_name(user_id: str, name: str) -> None:
 def update_password_by_id(user_id: str, password_hash: str) -> None:
     with conn() as c:
         c.execute("UPDATE users SET password_hash=? WHERE id=?", (password_hash, user_id))
+
+
+def get_user_by_central_id(central_id: str) -> Optional[dict[str, Any]]:
+    with conn() as c:
+        row = c.execute("SELECT * FROM users WHERE central_id=?", (central_id,)).fetchone()
+    if not row:
+        return None
+    user = dict(row)
+    user["interests"] = json.loads(user["interests"] or "[]")
+    return user
+
+
+def upsert_central_user(central_id: str, name: str, email: str,
+                        is_admin: bool = False) -> dict[str, Any]:
+    """中心账号 → 本地镜像；邮箱相同的旧本地账号自动绑定 central_id。"""
+    with conn() as c:
+        row = c.execute("SELECT * FROM users WHERE central_id=?", (central_id,)).fetchone()
+        if row:
+            c.execute(
+                "UPDATE users SET name=?, email=?, is_admin=? WHERE id=?",
+                ((name or "").strip(), (email or "").strip().lower(), 1 if is_admin else 0, row["id"]),
+            )
+            user_id = row["id"]
+        else:
+            row = c.execute("SELECT * FROM users WHERE id=?", (central_id,)).fetchone()
+            if not row:
+                row = c.execute("SELECT * FROM users WHERE lower(email)=?", ((email or "").strip().lower(),)).fetchone()
+            if row:
+                c.execute(
+                    "UPDATE users SET central_id=?, name=?, is_admin=? WHERE id=?",
+                    (central_id, (name or "").strip(), 1 if is_admin else 0, row["id"]),
+                )
+                user_id = row["id"]
+            else:
+                user_id = "u_" + uuid.uuid4().hex[:10]
+                c.execute(
+                    """INSERT INTO users(id,name,grade,major,interests,token,created_at,
+                       email,is_admin,central_id) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (user_id, (name or "Nudge 用户").strip(), "", "", "[]",
+                     "cal-" + uuid.uuid4().hex, now_iso(), (email or "").strip().lower(),
+                     1 if is_admin else 0, central_id),
+                )
+    return get_user(user_id) or {}
+
+
+def save_central_session(user_id: str, token: str) -> None:
+    with conn() as c:
+        c.execute(
+            "INSERT INTO central_sessions(user_id,token,created_at) VALUES(?,?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET token=excluded.token, created_at=excluded.created_at",
+            (user_id, token, now_iso()),
+        )
+
+
+def get_central_session(user_id: str) -> str:
+    with conn() as c:
+        row = c.execute("SELECT token FROM central_sessions WHERE user_id=?", (user_id,)).fetchone()
+    return row["token"] if row else ""
+
+
+def delete_central_session(user_id: str) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM central_sessions WHERE user_id=?", (user_id,))
+
+
+def upsert_presence(user_id: str, instance_id: str, event_count: int,
+                    has_key: bool, campus: str) -> None:
+    with conn() as c:
+        c.execute(
+            """INSERT INTO central_presence(user_id,instance_id,last_seen,event_count,has_key,campus)
+               VALUES(?,?,?,?,?,?)
+               ON CONFLICT(user_id,instance_id) DO UPDATE SET
+                 last_seen=excluded.last_seen, event_count=excluded.event_count,
+                 has_key=excluded.has_key, campus=excluded.campus""",
+            (user_id, instance_id, now_iso(), int(event_count), 1 if has_key else 0, campus or ""),
+        )
+
+
+def list_presence() -> list[dict[str, Any]]:
+    with conn() as c:
+        rows = c.execute(
+            "SELECT user_id,instance_id,last_seen,event_count,has_key,campus "
+            "FROM central_presence ORDER BY last_seen DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def touch_last_seen(user_id: str) -> None:

@@ -95,6 +95,9 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
 BREVO_SENDER = os.getenv("BREVO_SENDER", "").strip() or SMTP_SENDER
 BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "").strip() or SMTP_SENDER_NAME
 
+# 共享账号中心（方案 A：PythonAnywhere 实例）。留空 = 单机模式。
+NUDGE_CENTRAL_URL = os.getenv("NUDGE_CENTRAL_URL", "").strip().rstrip("/")
+
 TZ = "Asia/Shanghai"
 
 # 提醒策略：截止前 N 天

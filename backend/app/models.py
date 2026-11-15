@@ -143,3 +143,25 @@ class AdminUserUpdate(BaseModel):
     name: str = ""
     email: str = ""
     password: str = ""
+
+
+class CentralPresence(BaseModel):
+    instance_id: str = ""
+    event_count: int = 0
+    has_key: bool = False
+    campus: str = ""
+
+
+class CentralSettingsUpdate(BaseModel):
+    url: str = ""
+
+
+class BindCodeRequest(BaseModel):
+    email: str
+    password: str
+
+
+class BindRequest(BaseModel):
+    email: str
+    password: str
+    code: str
