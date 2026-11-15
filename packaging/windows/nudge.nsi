@@ -2,7 +2,10 @@
 !include "MUI2.nsh"
 
 !ifndef VERSION
-  !define VERSION "1.2.6"
+  !define VERSION "2.0.0beta"
+!endif
+!ifndef VERSIONNUM
+  !define VERSIONNUM "2.0.0.0"
 !endif
 !ifndef ARCH
   !define ARCH "x64"
@@ -22,7 +25,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
 
-VIProductVersion "${VERSION}.0"
+VIProductVersion "${VERSIONNUM}"
 VIAddVersionKey /LANG=2052 "ProductName" "Nudge"
 VIAddVersionKey /LANG=2052 "FileDescription" "Nudge 校园截止管家安装程序"
 VIAddVersionKey /LANG=2052 "FileVersion" "${VERSION}"

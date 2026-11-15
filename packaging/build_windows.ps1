@@ -9,6 +9,10 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $Version = (Get-Content "packaging/version.txt" -Raw).Trim()
+$VersionNum = $Version -replace '[^0-9.].*$', ''
+$parts = @($VersionNum -split '\.' | Where-Object { $_ -ne '' })
+while ($parts.Count -lt 4) { $parts += '0' }
+$VersionNum = ($parts[0..3] -join '.')
 New-Item -ItemType Directory -Force -Path "dist", "build" | Out-Null
 
 Write-Host "[build] PyInstaller $Version / windows-$Arch"
@@ -65,7 +69,7 @@ if (-not $Makensis) {
 if (-not $Makensis) { throw "未找到或无法安装 NSIS makensis.exe" }
 
 Write-Host "[build] NSIS $Makensis"
-& $Makensis "/DVERSION=$Version" "/DARCH=$Arch" "/DDISTDIR=$Root\dist" "/DASSETDIR=$Root\packaging\assets" "packaging/windows/nudge.nsi"
+& $Makensis "/DVERSION=$Version" "/DVERSIONNUM=$VersionNum" "/DARCH=$Arch" "/DDISTDIR=$Root\dist" "/DASSETDIR=$Root\packaging\assets" "packaging/windows/nudge.nsi"
 if ($LASTEXITCODE -ne 0) { throw "NSIS 安装器构建失败" }
 $Installer = Join-Path $Root "dist/Nudge-$Version-windows-$Arch-setup.exe"
 if (-not (Test-Path $Installer)) { throw "缺少安装器 $Installer" }
