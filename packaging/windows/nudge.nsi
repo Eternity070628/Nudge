@@ -2,7 +2,7 @@
 !include "MUI2.nsh"
 
 !ifndef VERSION
-  !define VERSION "2.0.0beta"
+  !define VERSION "2.0.0"
 !endif
 !ifndef VERSIONNUM
   !define VERSIONNUM "2.0.0.0"

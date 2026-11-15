@@ -463,7 +463,7 @@ def list_users() -> list[dict[str, Any]]:
     with conn() as c:
         rows = c.execute(
             """SELECT u.id, u.name, u.email, u.is_admin, u.created_at, u.last_seen,
-                      u.campus, u.disabled,
+                      u.campus, u.disabled, u.central_id,
                       (SELECT COUNT(*) FROM user_events ue WHERE ue.user_id=u.id) AS event_count,
                       EXISTS(SELECT 1 FROM user_settings s
                              WHERE s.user_id=u.id AND s.key='api_key' AND s.value<>'') AS has_key

@@ -36,7 +36,9 @@ async function api(path, opts) {
   if (!res.ok) {
     let msg = "请求失败 (" + res.status + ")";
     try { const j = await res.json(); if (j.detail) msg = j.detail; } catch (e) {}
-    throw new Error(msg);
+    const error = new Error(msg);
+    error.status = res.status;
+    throw error;
   }
   return res.json();
 }
@@ -709,7 +711,7 @@ function presenceText(userId, presence) {
 }
 
 async function loadGlobalUsers() {
-  const box = $("admin-global");
+  const box = $("admin-global-panel");
   box.classList.remove("hidden");
   box.innerHTML = "加载全局用户状态…";
   try {
@@ -1160,58 +1162,74 @@ async function saveAdminEdit(event) {
   }
 }
 
+function renderAdminRow(u) {
+  const readonly = !!u.remote_only;
+  const row = el("div", "user-row" + (readonly ? " user-row-readonly" : ""));
+  const check = document.createElement("input");
+  check.type = "checkbox";
+  check.className = "user-check";
+  check.title = readonly ? "网页版账号在本机登录后才能加入对比" : "加入对比";
+  check.disabled = readonly;
+  check.checked = !readonly && state.adminSelected.has(u.id);
+  check.onchange = () => {
+    if (check.checked) state.adminSelected.add(u.id);
+    else state.adminSelected.delete(u.id);
+    updateCompareButton();
+  };
+  row.appendChild(check);
+  const tag = (u.is_admin ? " · 管理员" : "") + (readonly ? " · 仅网页版" : (u.local_only ? " · 仅本机" : ""));
+  row.appendChild(el("div", "user-main", (u.name || "未命名") + tag));
+  row.appendChild(el("div", "user-email", u.email || "无邮箱"));
+  const status = el("div", "user-status " + (u.status_key || "idle"));
+  status.appendChild(el("b", null, u.status || "未活跃"));
+  status.appendChild(el("small", null, u.last_seen ? "最后 " + shortTime(u.last_seen) : "从未登录"));
+  row.appendChild(status);
+  row.appendChild(el("div", "user-count", readonly ? "—" : (u.event_count || 0) + " 个事件"));
+  const keyText = readonly
+    ? (u.has_key ? "网页版 Key 已配" : "网页版未配 Key")
+    : (u.has_key ? "Key 已配" : "未配 Key");
+  row.appendChild(el("div", "user-key" + (u.has_key ? " set" : ""), keyText));
+  if (readonly) {
+    row.appendChild(el("div", "user-actions tiny", "在本机登录后即可管理"));
+    return row;
+  }
+  const actions = el("div", "user-actions");
+  const view = el("button", "btn ghost btn-mini", "查看");
+  view.type = "button";
+  view.onclick = () => loadAdminCompare([u.id]);
+  actions.appendChild(view);
+  const edit = el("button", "btn ghost btn-mini", "编辑");
+  edit.type = "button";
+  edit.onclick = () => openAdminEdit(u);
+  actions.appendChild(edit);
+  if (!u.is_admin && u.id !== "u_demo") {
+    const remove = el("button", "btn ghost btn-mini", "删除");
+    remove.type = "button";
+    remove.onclick = async () => {
+      if (!confirm("删除用户并清理其事件和反馈？")) return;
+      try {
+        await api("/api/admin/users/" + u.id, { method: "DELETE" });
+        state.adminSelected.delete(u.id);
+        loadAdminUsers();
+      } catch (e) { alert(e.message); }
+    };
+    actions.appendChild(remove);
+  }
+  row.appendChild(actions);
+  return row;
+}
+
 async function loadAdminUsers() {
   const box = $("admin-users");
   try {
     const data = await api("/api/admin/users");
-    $("admin-count").textContent = data.users.length + " 人";
+    const remote = data.users.filter((u) => u.remote_only).length;
+    let count = data.users.length + " 人";
+    if (data.central) count += " · 与网页版一致，" + remote + " 个仅网页版";
+    if (data.error) count += " · 中心暂不可达：" + data.error;
+    $("admin-count").textContent = count;
     box.innerHTML = "";
-    data.users.forEach((u) => {
-      const row = el("div", "user-row");
-      const check = document.createElement("input");
-      check.type = "checkbox";
-      check.className = "user-check";
-      check.title = "加入对比";
-      check.checked = state.adminSelected.has(u.id);
-      check.onchange = () => {
-        if (check.checked) state.adminSelected.add(u.id);
-        else state.adminSelected.delete(u.id);
-        updateCompareButton();
-      };
-      row.appendChild(check);
-      row.appendChild(el("div", "user-main", (u.name || "未命名") + (u.is_admin ? " · 管理员" : "")));
-      row.appendChild(el("div", "user-email", u.email || "无邮箱"));
-      const status = el("div", "user-status " + (u.status_key || "idle"));
-      status.appendChild(el("b", null, u.status || "未活跃"));
-      status.appendChild(el("small", null, u.last_seen ? "最后 " + shortTime(u.last_seen) : "从未登录"));
-      row.appendChild(status);
-      row.appendChild(el("div", "user-count", (u.event_count || 0) + " 个事件"));
-      row.appendChild(el("div", "user-key" + (u.has_key ? " set" : ""), u.has_key ? "Key 已配" : "未配 Key"));
-      const actions = el("div", "user-actions");
-      const view = el("button", "btn ghost btn-mini", "查看");
-      view.type = "button";
-      view.onclick = () => loadAdminCompare([u.id]);
-      actions.appendChild(view);
-      const edit = el("button", "btn ghost btn-mini", "编辑");
-      edit.type = "button";
-      edit.onclick = () => openAdminEdit(u);
-      actions.appendChild(edit);
-      if (!u.is_admin && u.id !== "u_demo") {
-        const remove = el("button", "btn ghost btn-mini", "删除");
-        remove.type = "button";
-        remove.onclick = async () => {
-          if (!confirm("删除用户并清理其事件和反馈？")) return;
-          try {
-            await api("/api/admin/users/" + u.id, { method: "DELETE" });
-            state.adminSelected.delete(u.id);
-            loadAdminUsers();
-          } catch (e) { alert(e.message); }
-        };
-        actions.appendChild(remove);
-      }
-      row.appendChild(actions);
-      box.appendChild(row);
-    });
+    data.users.forEach((u) => box.appendChild(renderAdminRow(u)));
     updateCompareButton();
   } catch (e) {
     $("admin-count").textContent = e.message;
@@ -1291,6 +1309,14 @@ function switchAuthTab(name) {
   });
 }
 
+function switchToLogin(email, message) {
+  switchAuthTab("login");
+  if (email) $("login-email").value = email;
+  $("login-password").value = "";
+  setAuthStatus("login-status", message, "info");
+  $("login-password").focus();
+}
+
 function startCountdown(button) {
   let left = 60;
   button.disabled = true;
@@ -1343,6 +1369,10 @@ async function sendCode(emailId, purpose, statusId, button) {
     }
     startCountdown(button);
   } catch (e) {
+    if (purpose === "register" && e.status === 409) {
+      switchToLogin(email, e.message);
+      return;
+    }
     setAuthStatus(statusId, "发送失败：" + e.message, "error");
     button.disabled = false;
     button.textContent = "发送验证码";
@@ -1438,6 +1468,10 @@ async function handleRegister(event) {
     });
     location.href = "/app";
   } catch (e) {
+    if (e.status === 409) {
+      switchToLogin($("register-email").value.trim(), e.message);
+      return;
+    }
     setAuthStatus(status, "注册失败：" + e.message, "error");
   }
 }

@@ -323,6 +323,8 @@ textarea.edit-input{resize:vertical;line-height:1.5}
 .user-email{font-size:11.5px;color:var(--dim);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .user-count{font-size:11.5px;color:var(--dim);text-align:right}
 .user-actions{display:flex;gap:6px;justify-content:flex-end}
+.user-row-readonly{opacity:.72}
+.user-row-readonly .user-main{font-weight:500}
 .admin-detail{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--ev-bg)}
 .detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .detail-head b{font-size:13px}

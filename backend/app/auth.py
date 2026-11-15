@@ -57,9 +57,16 @@ def _mirror_central(data: dict, token: str) -> dict[str, Any]:
     return accounts.public_user(user) or {}
 
 
-def _central_failure(error: central.CentralError) -> None:
+REGISTERED_HINT = "该邮箱已在网页版注册，请直接使用网页版同一密码登录"
+
+
+def _central_failure(error: central.CentralError, registered_hint: str = "") -> None:
+    """中心错误原样透传；注册撞已有账号时转成 409，方便前端切到登录。"""
+    detail = str(error)
+    if registered_hint and error.status == 400 and "已注册" in detail:
+        raise HTTPException(409, registered_hint) from error
     status = error.status if 400 <= error.status <= 599 else 502
-    raise HTTPException(status, str(error))
+    raise HTTPException(status, detail)
 
 
 @router.post("/login")
@@ -72,9 +79,7 @@ def api_login(body: LoginRequest, response: Response) -> dict[str, Any]:
                 try:
                     sent = central.send_code(body.email, "register")
                 except central.CentralError as send_error:
-                    if send_error.status == 400:
-                        raise HTTPException(409, "该邮箱已有共享账号，请使用共享密码登录") from send_error
-                    _central_failure(send_error)
+                    _central_failure(send_error, REGISTERED_HINT)
                 return {
                     "bind_required": True,
                     "email": body.email,
@@ -100,7 +105,7 @@ def api_register(body: RegisterRequest, response: Response) -> dict[str, Any]:
             data, token = central.register(body.nickname, body.email, body.password,
                                            body.confirm, body.code)
         except central.CentralError as error:
-            _central_failure(error)
+            _central_failure(error, REGISTERED_HINT)
         user = _mirror_central(data, token)
         _set_session(response, user["id"])
         return {"user": user}
@@ -119,9 +124,7 @@ def api_bind_code(body: BindCodeRequest) -> dict[str, Any]:
     try:
         sent = central.send_code(body.email, "register")
     except central.CentralError as error:
-        if error.status == 400:
-            raise HTTPException(409, "该邮箱已有共享账号，请使用共享密码登录") from error
-        _central_failure(error)
+        _central_failure(error, REGISTERED_HINT)
     return {
         "ok": True, "dev": sent.get("dev", False),
         "dev_code": sent.get("dev_code", ""), "notice": sent.get("notice", ""),
@@ -168,7 +171,8 @@ def api_send_code(body: SendCodeRequest) -> dict[str, Any]:
         try:
             result = central.send_code(body.email, body.purpose)
         except central.CentralError as error:
-            _central_failure(error)
+            hint = REGISTERED_HINT if body.purpose == "register" else ""
+            _central_failure(error, hint)
         return result
     try:
         result = accounts.issue_code(body.email, body.purpose)
@@ -228,9 +232,69 @@ def api_demo(response: Response) -> dict[str, Any]:
     return {"user": user}
 
 
+def _merge_users(central_users: list[dict[str, Any]],
+                 local_users: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """以中心账号为主干合并本机镜像；只在网页版存在的账号标记为只读。"""
+    by_central = {str(u.get("central_id")): u for u in local_users if u.get("central_id")}
+    by_email = {
+        (u.get("email") or "").strip().lower(): u
+        for u in local_users if (u.get("email") or "").strip()
+    }
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for account in central_users:
+        central_id = str(account.get("id") or "")
+        item = dict(account)
+        item["central_id"] = central_id
+        local = by_central.get(central_id)
+        if local is None:
+            local = by_email.get((account.get("email") or "").strip().lower())
+        if local:
+            seen.add(local["id"])
+            item.update({
+                "id": local["id"], "local_id": local["id"],
+                "event_count": local.get("event_count", 0),
+                "has_key": local.get("has_key", False),
+                "campus": local.get("campus") or account.get("campus") or "",
+                "remote_only": False, "local_only": False,
+            })
+        else:
+            item.update({
+                "id": "central:" + central_id, "local_id": "",
+                "event_count": 0, "has_key": bool(account.get("has_key")),
+                "remote_only": True, "local_only": False,
+            })
+        merged.append(item)
+    for local in local_users:
+        if local["id"] in seen:
+            continue
+        item = dict(local)
+        item.setdefault("central_id", "")
+        item.update({"local_id": local["id"], "remote_only": False, "local_only": True})
+        merged.append(item)
+    return merged
+
+
 @admin_router.get("/users")
-def api_admin_users(_: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
-    return {"users": db.list_users()}
+def api_admin_users(admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """管理端用户列表：有中心时以中心全量为准，保证与网页版一致。"""
+    local_users = db.list_users()
+    if not central.enabled():
+        return {"central": False, "users": local_users, "error": ""}
+    token = central.session_token(admin["id"])
+    if not token:
+        return {"central": True, "users": local_users,
+                "error": "请退出后重新登录，以取得共享账号中心会话"}
+    try:
+        data = central.admin_users(token)
+    except central.CentralError as error:
+        return {"central": True, "users": local_users, "error": str(error)}
+    return {
+        "central": True,
+        "users": _merge_users(data.get("users") or [], local_users),
+        "presence": data.get("presence") or [],
+        "error": "",
+    }
 
 
 @admin_router.get("/global-users")
