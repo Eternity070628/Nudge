@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -26,7 +27,7 @@ from .services import accounts, ics, mailer
 from .services.seed import SAMPLES
 
 app = FastAPI(title="Nudge · 校园截止管家", version="1.2.6")
-STATIC_DIR = BASE_DIR / "app" / "static"
+STATIC_DIR = Path(os.getenv("NUDGE_STATIC") or (BASE_DIR / "app" / "static"))
 
 db.init()
 # 部署到新机器时，环境变量里的 refresh token 会在启动时落进本机数据库
@@ -93,6 +94,7 @@ def _commit() -> str:
 def health() -> dict[str, Any]:
     return {
         "ok": True,
+        "app": "nudge",
         "llm": llm.available(),
         "mode": llm.mode() or "auto",
         "model": llm.current_model(),

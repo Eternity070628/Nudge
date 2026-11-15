@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Nudge
+Name[zh_CN]=Nudge 校园截止管家
+Comment=校园截止管家
+Comment[zh_CN]=把通知变成截止、材料和提醒
+Exec=nudge
+Icon=nudge
+Terminal=false
+Categories=Office;Utility;
+StartupNotify=true

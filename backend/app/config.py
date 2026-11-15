@@ -34,6 +34,8 @@ for _candidate in (REPO_DIR / ".env", BASE_DIR / ".env"):
 
 DATA_DIR = Path(os.getenv("NUDGE_DATA", BASE_DIR / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+# 安装版把配置放在用户数据目录，避免写安装目录（Program Files / Applications 只读）
+_load_env(DATA_DIR / ".env")
 DB_PATH = DATA_DIR / "nudge.db"
 
 # 华为云 MaaS（盘古 / DeepSeek）。不配 key 时自动降级为规则抽取器，离线也能跑。

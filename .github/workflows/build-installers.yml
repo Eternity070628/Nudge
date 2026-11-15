@@ -1,0 +1,138 @@
+name: build-installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "packaging/**"
+      - ".github/workflows/build-installers.yml"
+      - "backend/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-installers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            arch: x64
+            py_arch: x64
+          - runner: windows-11-arm
+            arch: arm64
+            py_arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          architecture: ${{ matrix.py_arch }}
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt -r packaging/requirements-build.txt
+      - name: Install NSIS
+        continue-on-error: true
+        run: choco install nsis -y --no-progress
+      - name: Build Windows installer
+        shell: pwsh
+        env:
+          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: pwsh -File packaging/build_windows.ps1 -Arch ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nudge-windows-${{ matrix.arch }}
+          path: dist/Nudge-*-windows-${{ matrix.arch }}-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+    env:
+      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt -r packaging/requirements-build.txt
+      - name: Import Apple certificate
+        if: env.MACOS_CERTIFICATE_P12 != ''
+        run: |
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > build/cert.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import build/cert.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+      - name: Build macOS packages
+        run: |
+          chmod +x packaging/build_macos.sh
+          PYTHON=python3 packaging/build_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nudge-macos-${{ matrix.arch }}
+          path: |
+            dist/*-macos-${{ matrix.arch }}.dmg
+            dist/*-macos-${{ matrix.arch }}.pkg
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system Python and Tk
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-venv python3-pip python3-tk
+      - name: Create build environment
+        run: |
+          python3 -m venv build/venv
+          build/venv/bin/pip install --upgrade pip
+          build/venv/bin/pip install -r backend/requirements.txt -r packaging/requirements-build.txt
+      - name: Build Linux packages
+        run: |
+          chmod +x packaging/build_linux.sh
+          PYTHON="$PWD/build/venv/bin/python" packaging/build_linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nudge-linux-${{ matrix.arch }}
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*-linux-${{ matrix.arch }}.AppImage
+          if-no-files-found: error
+          retention-days: 14
