@@ -49,9 +49,13 @@ ln -sf nudge.png "$APPDIR/.DirIcon"
 NFPM_URL="$(NFPM_ARCH="$NFPM_ARCH" python3 - <<'PY'
 import json, os, urllib.request
 arch = os.environ["NFPM_ARCH"]
+headers = {"User-Agent": "nudge-build"}
+token = os.environ.get("GITHUB_TOKEN", "")
+if token:
+    headers["Authorization"] = "Bearer " + token
 req = urllib.request.Request(
     "https://api.github.com/repos/goreleaser/nfpm/releases/latest",
-    headers={"User-Agent": "nudge-build"},
+    headers=headers,
 )
 data = json.load(urllib.request.urlopen(req, timeout=30))
 for asset in data.get("assets", []):
