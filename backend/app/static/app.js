@@ -550,6 +550,8 @@ async function loadSettings() {
       ? "已保存 Key（尾号 " + s.key_hint + "），留空不会覆盖"
       : "尚未保存个人 Key，大模型未接入";
     $("campus-section").classList.toggle("hidden", !!s.is_admin);
+    $("mail-section").classList.toggle("hidden", !s.is_admin);
+    if (s.is_admin) loadMailSettings();
     const readonly = !!s.readonly;
     $("settings-readonly").classList.toggle("hidden", !readonly);
     $("settings-readonly").textContent = readonly
@@ -561,6 +563,93 @@ async function loadSettings() {
     });
   } catch (e) {
     $("setting-status").textContent = "读取设置失败：" + e.message;
+  }
+}
+
+function toggleMailFields() {
+  const transport = $("mail-transport").value;
+  $("mail-brevo-fields").classList.toggle("hidden", transport === "smtp" || transport === "dev");
+  $("mail-smtp-fields").classList.toggle("hidden", transport === "brevo" || transport === "dev");
+}
+
+async function loadMailSettings() {
+  try {
+    const mail = await api("/api/admin/mail");
+    $("mail-transport").value = mail.transport || "auto";
+    $("mail-brevo-sender").value = mail.brevo.sender || "";
+    $("mail-brevo-name").value = mail.brevo.name || "";
+    $("mail-brevo-key").value = "";
+    $("mail-smtp-host").value = mail.smtp.host || "";
+    $("mail-smtp-port").value = mail.smtp.port || "";
+    $("mail-smtp-security").value = mail.smtp.security || "ssl";
+    $("mail-smtp-user").value = mail.smtp.user || "";
+    $("mail-smtp-pass").value = "";
+    $("mail-smtp-sender").value = mail.smtp.sender || "";
+    $("mail-smtp-name").value = mail.smtp.name || "";
+    $("mail-smtp-verify").checked = mail.smtp.verify_tls !== false;
+    $("mail-dev").checked = !!mail.dev_mode;
+    const modeText = { brevo: "Brevo", smtp: "SMTP", graph: "Graph", dev: "开发模式" }[mail.mode] || "未配置";
+    $("mail-state").textContent = "当前模式：" + modeText
+      + " · Brevo Key " + (mail.brevo.key_set ? "已保存" : "未保存")
+      + " · SMTP 密码 " + (mail.smtp.pass_set ? "已保存" : "未保存");
+    if (!$("mail-test-to").value) {
+      $("mail-test-to").value = mail.smtp.sender || mail.brevo.sender || "";
+    }
+    toggleMailFields();
+  } catch (e) {
+    $("mail-state").textContent = "读取邮件配置失败：" + e.message;
+  }
+}
+
+async function saveMailSettings() {
+  const button = $("mail-save");
+  button.disabled = true;
+  try {
+    const port = $("mail-smtp-port").value.trim();
+    const body = {
+      transport: $("mail-transport").value,
+      brevo_key: $("mail-brevo-key").value.trim(),
+      brevo_sender: $("mail-brevo-sender").value.trim(),
+      brevo_name: $("mail-brevo-name").value.trim(),
+      smtp_host: $("mail-smtp-host").value.trim(),
+      smtp_port: port ? Number(port) : null,
+      smtp_security: $("mail-smtp-security").value,
+      smtp_user: $("mail-smtp-user").value.trim(),
+      smtp_pass: $("mail-smtp-pass").value,
+      smtp_sender: $("mail-smtp-sender").value.trim(),
+      smtp_name: $("mail-smtp-name").value.trim(),
+      smtp_verify_tls: $("mail-smtp-verify").checked,
+      dev_mode: $("mail-dev").checked,
+    };
+    await api("/api/admin/mail", { method: "POST", body: JSON.stringify(body) });
+    await loadMailSettings();
+    setAuthStatus("mail-status", "邮件配置已保存", "success");
+  } catch (e) {
+    setAuthStatus("mail-status", "保存失败：" + e.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function testMailSettings() {
+  const button = $("mail-test");
+  const to = $("mail-test-to").value.trim();
+  if (!to) {
+    setAuthStatus("mail-status", "请先填写测试收件邮箱", "error");
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "发送中…";
+  try {
+    const result = await api("/api/admin/mail/test", { method: "POST", body: JSON.stringify({ to_email: to }) });
+    setAuthStatus("mail-status", result.dev
+      ? "开发模式：未真实发信，注册验证码会显示在页面"
+      : "测试邮件已发送 · 通道 " + result.mode, "success");
+  } catch (e) {
+    setAuthStatus("mail-status", "发送失败：" + e.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "发送测试邮件";
   }
 }
 
@@ -601,7 +690,7 @@ function openSettings() {
   const dialog = $("settings-dialog");
   if (!dialog.open) dialog.showModal();
   setPasswordMethod("old");
-  ["setting-campus-status", "setting-email-status", "setting-password-status"].forEach((id) => {
+  ["setting-campus-status", "setting-email-status", "setting-password-status", "mail-status"].forEach((id) => {
     setAuthStatus(id, "");
   });
   loadSettings();
@@ -945,6 +1034,44 @@ function updateCompareButton() {
   button.disabled = count === 0;
 }
 
+function shortTime(value) {
+  return value ? value.replace("T", " ").slice(0, 16) : "";
+}
+
+let adminEditId = null;
+
+function openAdminEdit(user) {
+  adminEditId = user.id;
+  $("admin-edit-target").textContent = (user.name || "未命名") + " · " + user.id;
+  $("admin-edit-name").value = user.name || "";
+  $("admin-edit-email").value = user.email || "";
+  $("admin-edit-password").value = "";
+  setAuthStatus("admin-edit-status", "");
+  $("admin-edit-dialog").showModal();
+}
+
+async function saveAdminEdit(event) {
+  event.preventDefault();
+  if (!adminEditId) return;
+  const button = $("admin-edit-save");
+  button.disabled = true;
+  try {
+    const body = {
+      name: $("admin-edit-name").value.trim(),
+      email: $("admin-edit-email").value.trim(),
+      password: $("admin-edit-password").value,
+    };
+    const result = await api("/api/admin/users/" + adminEditId, { method: "PATCH", body: JSON.stringify(body) });
+    setAuthStatus("admin-edit-status", "已保存 " + (result.user.name || result.user.id), "success");
+    $("admin-edit-dialog").close();
+    loadAdminUsers();
+  } catch (e) {
+    setAuthStatus("admin-edit-status", "保存失败：" + e.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadAdminUsers() {
   const box = $("admin-users");
   try {
@@ -966,13 +1093,21 @@ async function loadAdminUsers() {
       row.appendChild(check);
       row.appendChild(el("div", "user-main", (u.name || "未命名") + (u.is_admin ? " · 管理员" : "")));
       row.appendChild(el("div", "user-email", u.email || "无邮箱"));
+      const status = el("div", "user-status " + (u.status_key || "idle"));
+      status.appendChild(el("b", null, u.status || "未活跃"));
+      status.appendChild(el("small", null, u.last_seen ? "最后 " + shortTime(u.last_seen) : "从未登录"));
+      row.appendChild(status);
       row.appendChild(el("div", "user-count", (u.event_count || 0) + " 个事件"));
-      row.appendChild(el("div", "user-time", (u.created_at || "").slice(0, 10)));
+      row.appendChild(el("div", "user-key" + (u.has_key ? " set" : ""), u.has_key ? "Key 已配" : "未配 Key"));
       const actions = el("div", "user-actions");
       const view = el("button", "btn ghost btn-mini", "查看");
       view.type = "button";
       view.onclick = () => loadAdminCompare([u.id]);
       actions.appendChild(view);
+      const edit = el("button", "btn ghost btn-mini", "编辑");
+      edit.type = "button";
+      edit.onclick = () => openAdminEdit(u);
+      actions.appendChild(edit);
       if (!u.is_admin && u.id !== "u_demo") {
         const remove = el("button", "btn ghost btn-mini", "删除");
         remove.type = "button";
@@ -1001,10 +1136,15 @@ function compareColumn(data) {
   head.appendChild(el("b", null, data.user.name || "未命名"));
   head.appendChild(el("span", "tiny", data.user.email || "无邮箱"));
   col.appendChild(head);
+  const status = el("div", "user-status " + (data.user.status_key || "idle"));
+  status.appendChild(el("b", null, data.user.status || "未活跃"));
+  status.appendChild(el("small", null, data.user.last_seen ? "最后 " + shortTime(data.user.last_seen) : "从未登录"));
+  col.appendChild(status);
   const model = el("div", "detail-model");
   model.textContent = "模型：" + (data.model.model || "未配置")
     + " · 接口：" + (data.model.base_url || "未配置")
-    + " · Key：" + (data.model.has_key ? "已配置（不显示）" : "未配置");
+    + " · Key：" + (data.model.has_key ? "已配置（不显示）" : "未配置")
+    + " · 事件：" + (data.user.event_count || 0);
   col.appendChild(model);
   const list = el("div", "detail-events");
   if (!data.events.length) {
@@ -1433,6 +1573,11 @@ $("admin-compare").onclick = () => {
   const ids = Array.from(state.adminSelected);
   if (ids.length) loadAdminCompare(ids);
 };
+$("mail-save").onclick = saveMailSettings;
+$("mail-test").onclick = testMailSettings;
+$("mail-transport").onchange = toggleMailFields;
+$("admin-edit-close").onclick = () => $("admin-edit-dialog").close();
+$("admin-edit-form").onsubmit = saveAdminEdit;
 
 $("admin-btn").onclick = () => { location.href = "/admin"; };
 $("admin-back").onclick = () => { location.href = "/app"; };

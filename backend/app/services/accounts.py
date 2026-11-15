@@ -71,6 +71,7 @@ def create_session(user_id: str) -> str:
     token = secrets.token_urlsafe(32)
     expires = (datetime.now(timezone.utc).astimezone() + timedelta(days=SESSION_DAYS)).isoformat(timespec="seconds")
     db.create_session(token, user_id, expires)
+    db.touch_last_seen(user_id)
     return token
 
 
@@ -94,6 +95,11 @@ def _validate_email(email: str) -> str:
     if not EMAIL_RE.match(email):
         raise ValueError("邮箱格式不正确")
     return email
+
+
+def validate_email(email: str) -> str:
+    """管理端改邮箱时复用同一套格式校验。"""
+    return _validate_email(email)
 
 
 def issue_code(email: str, purpose: str) -> dict[str, Any]:

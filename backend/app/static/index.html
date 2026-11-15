@@ -17,7 +17,7 @@
   }
 })();
 </script>
-<link rel="stylesheet" href="/static/style.css?v=1.2.6" />
+<link rel="stylesheet" href="/static/style.css?v=1.3.0" />
 </head>
 <body>
 <div class="glow g1"></div><div class="glow g2"></div>
@@ -289,6 +289,95 @@
         <button class="btn ghost" type="button" id="setting-test">测试连接</button>
       </div>
     </section>
+
+    <section class="settings-section hidden" id="mail-section">
+      <h4>邮件发信（注册验证码）</h4>
+      <p class="hint">配置后本机所有用户注册/重置密码都会通过它真实发信。密钥只保存在本机数据库，不写入代码或安装包。</p>
+      <label>发信通道
+        <select id="mail-transport" class="edit-input">
+          <option value="auto">自动（优先 Brevo / SMTP）</option>
+          <option value="brevo">Brevo API</option>
+          <option value="smtp">SMTP</option>
+          <option value="dev">开发模式（验证码显示在页面）</option>
+        </select>
+      </label>
+
+      <div id="mail-brevo-fields">
+        <label>Brevo API Key
+          <input id="mail-brevo-key" type="password" autocomplete="off" placeholder="留空则保留已保存的 Key" />
+        </label>
+        <label>Brevo 发件邮箱
+          <input id="mail-brevo-sender" type="email" autocomplete="off" placeholder="sender@example.com" />
+        </label>
+        <label>发件人名称
+          <input id="mail-brevo-name" autocomplete="off" placeholder="Nudge" />
+        </label>
+      </div>
+
+      <div id="mail-smtp-fields" class="hidden">
+        <label>SMTP 主机
+          <input id="mail-smtp-host" autocomplete="off" placeholder="smtp.exmail.qq.com" />
+        </label>
+        <label>端口
+          <input id="mail-smtp-port" type="number" inputmode="numeric" placeholder="465" />
+        </label>
+        <label>安全方式
+          <select id="mail-smtp-security" class="edit-input">
+            <option value="ssl">SSL</option>
+            <option value="starttls">STARTTLS</option>
+            <option value="none">无加密</option>
+          </select>
+        </label>
+        <label>SMTP 账号
+          <input id="mail-smtp-user" autocomplete="off" placeholder="login@example.com" />
+        </label>
+        <label>SMTP 密码
+          <input id="mail-smtp-pass" type="password" autocomplete="off" placeholder="留空则保留已保存的密码" />
+        </label>
+        <label>发件邮箱
+          <input id="mail-smtp-sender" type="email" autocomplete="off" placeholder="sender@example.com" />
+        </label>
+        <label>发件人名称
+          <input id="mail-smtp-name" autocomplete="off" placeholder="Nudge" />
+        </label>
+        <label class="check-line"><input id="mail-smtp-verify" type="checkbox" /> 校验证书</label>
+      </div>
+
+      <label class="check-line"><input id="mail-dev" type="checkbox" /> 开发模式：不发信，验证码直接显示在页面</label>
+      <p class="hint" id="mail-state"></p>
+      <div class="actions">
+        <button class="btn primary" type="button" id="mail-save">保存邮件配置</button>
+        <button class="btn ghost" type="button" id="mail-test">发送测试邮件</button>
+      </div>
+      <label>测试收件邮箱
+        <input id="mail-test-to" type="email" autocomplete="off" placeholder="you@example.com" />
+      </label>
+      <p class="auth-status" id="mail-status"></p>
+    </section>
+  </form>
+</dialog>
+
+<dialog id="admin-edit-dialog" class="settings-dialog">
+  <form id="admin-edit-form">
+    <div class="settings-head">
+      <h3>编辑用户</h3>
+      <button class="btn ghost btn-mini" type="button" id="admin-edit-close">关闭</button>
+    </div>
+    <p class="hint" id="admin-edit-target"></p>
+    <label>昵称
+      <input id="admin-edit-name" autocomplete="off" />
+    </label>
+    <label>邮箱
+      <input id="admin-edit-email" type="email" autocomplete="off" />
+    </label>
+    <label>新密码
+      <input id="admin-edit-password" type="password" autocomplete="new-password" placeholder="留空则不修改" />
+    </label>
+    <p class="hint">管理员修改不需要邮箱验证码；改密码后该用户已有会话会失效。</p>
+    <p class="auth-status" id="admin-edit-status"></p>
+    <div class="actions">
+      <button class="btn primary" type="submit" id="admin-edit-save">保存修改</button>
+    </div>
   </form>
 </dialog>
 
@@ -331,6 +420,6 @@
   </main>
 </section>
 
-<script src="/static/app.js?v=1.2.6"></script>
+<script src="/static/app.js?v=1.3.0"></script>
 </body>
 </html>

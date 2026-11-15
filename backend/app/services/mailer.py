@@ -179,6 +179,42 @@ def _mail_text(action: str, code: str) -> str:
     )
 
 
+def apply_db_settings() -> None:
+    """让管理端保存的邮件配置覆盖 .env；安装包没有 .env 时也能真实发信。"""
+    global _OPENER
+    saved = db.get_settings()
+    if "mail_transport" in saved:
+        config.MAIL_TRANSPORT = (saved.get("mail_transport") or "auto").strip().lower()
+    if "mail_dev" in saved:
+        config.NUDGE_EMAIL_DEV = (saved.get("mail_dev") or "").strip().lower() in (
+            "1", "true", "yes", "on"
+        )
+    mapping = {
+        "mail_brevo_key": "BREVO_API_KEY",
+        "mail_brevo_sender": "BREVO_SENDER",
+        "mail_brevo_name": "BREVO_SENDER_NAME",
+        "mail_smtp_host": "SMTP_HOST",
+        "mail_smtp_security": "SMTP_SECURITY",
+        "mail_smtp_user": "SMTP_USER",
+        "mail_smtp_pass": "SMTP_PASS",
+        "mail_smtp_sender": "SMTP_SENDER",
+        "mail_smtp_name": "SMTP_SENDER_NAME",
+    }
+    for key, attr in mapping.items():
+        if key in saved:
+            setattr(config, attr, (saved.get(key) or "").strip())
+    if "mail_smtp_port" in saved:
+        try:
+            config.SMTP_PORT = int(saved.get("mail_smtp_port") or 465)
+        except (TypeError, ValueError):
+            config.SMTP_PORT = 465
+    if "mail_smtp_verify_tls" in saved:
+        config.SMTP_VERIFY_TLS = (saved.get("mail_smtp_verify_tls") or "").strip().lower() in (
+            "1", "true", "yes", "on"
+        )
+    _OPENER = None
+
+
 def _smtp_configured() -> bool:
     return bool(config.SMTP_USER and config.SMTP_PASS)
 
@@ -294,14 +330,8 @@ def _brevo_send(to_email: str, subject: str, text: str) -> None:
         raise MailError(f"Brevo 连接失败：{error}（确认服务器能访问 443 端口的 api.brevo.com）") from error
 
 
-def send_code(to_email: str, code: str, purpose: str) -> dict:
-    """发送验证码；开发模式返回 dev=True，由接口决定是否回显。"""
-    if config.NUDGE_EMAIL_DEV:
-        print(f"[DEV] 未真实发信，验证码 {code} -> {to_email}")
-        return {"dev": True}
-    action = "注册" if purpose == "register" else "重置密码"
-    subject = f"Nudge {action}验证码"
-    text = _mail_text(action, code)
+def _deliver(to_email: str, subject: str, text: str) -> str:
+    """按当前配置真实发信；返回实际使用的通道名。"""
     mode = status()["mode"]
     if mode == "brevo":
         # 同一个域不能自己给自己代发：QQ 企业邮 / 腾讯企业邮会以
@@ -317,23 +347,49 @@ def send_code(to_email: str, code: str, purpose: str) -> dict:
                 f"{config.GRAPH_SENDER} 本人发出。"
             )
         _brevo_send(to_email, subject, text)
-        return {"dev": False}
+        return "brevo"
     if mode == "smtp":
         _smtp_send(to_email, subject, text)
-        return {"dev": False}
+        return "smtp"
+    if mode == "graph":
+        token = _access_token()
+        payload = {
+            "message": {
+                "subject": subject,
+                "body": {"contentType": "Text", "content": text},
+                "toRecipients": [{"emailAddress": {"address": to_email}}],
+                # 发件箱里能看到自己发出的验证码，答辩时可以现场翻给对方看
+                "saveToSentItems": True,
+            },
+        }
+        _json(GRAPH_SEND, token, payload)
+        return "graph"
+    raise MailError("邮件通道未配置：请管理员在设置中填写 Brevo Key 或 SMTP 账号")
 
-    token = _access_token()
-    payload = {
-        "message": {
-            "subject": subject,
-            "body": {"contentType": "Text", "content": text},
-            "toRecipients": [{"emailAddress": {"address": to_email}}],
-            # 发件箱里能看到自己发出的验证码，答辩时可以现场翻给对方看
-            "saveToSentItems": True,
-        },
-    }
-    _json(GRAPH_SEND, token, payload)
-    return {"dev": False}
+
+def send_code(to_email: str, code: str, purpose: str) -> dict:
+    """发送验证码；开发模式返回 dev=True，由接口决定是否回显。"""
+    if config.NUDGE_EMAIL_DEV:
+        print(f"[DEV] 未真实发信，验证码 {code} -> {to_email}")
+        return {"dev": True}
+    action = "注册" if purpose == "register" else "重置密码"
+    subject = f"Nudge {action}验证码"
+    text = _mail_text(action, code)
+    mode = _deliver(to_email, subject, text)
+    return {"dev": False, "mode": mode}
+
+
+def send_test(to_email: str) -> dict:
+    """管理端测试发信：不创建验证码，只验证通道是否真的可用。"""
+    if config.NUDGE_EMAIL_DEV:
+        return {"dev": True, "mode": "dev"}
+    text = (
+        "这是一封 Nudge 邮件配置测试邮件。\n"
+        "收到它说明当前邮件通道可以正常发信，注册验证码也会使用同一通道。\n\n"
+        "—— Nudge · 校园截止管家"
+    )
+    mode = _deliver(to_email, "Nudge 邮件配置测试", text)
+    return {"dev": False, "mode": mode}
 
 
 def status() -> dict:
@@ -377,6 +433,7 @@ def status() -> dict:
             "port": config.SMTP_PORT,
             "security": config.SMTP_SECURITY,
             "user": config.SMTP_USER,
+            "pass_set": bool(config.SMTP_PASS),
         },
         "tenant": config.GRAPH_TENANT_ID,
         "client_id": config.GRAPH_CLIENT_ID,

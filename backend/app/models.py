@@ -115,3 +115,31 @@ class PasswordChangeRequest(BaseModel):
     code: str = ""
     password: str
     confirm: str
+
+
+class MailSettingsUpdate(BaseModel):
+    transport: Literal["", "auto", "brevo", "smtp", "dev"] = ""
+    brevo_key: str = ""
+    brevo_sender: str = ""
+    brevo_name: str = ""
+    smtp_host: str = ""
+    smtp_port: Optional[int] = None
+    smtp_security: Literal["", "ssl", "starttls", "none"] = ""
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    smtp_sender: str = ""
+    smtp_name: str = ""
+    smtp_verify_tls: Optional[bool] = None
+    dev_mode: Optional[bool] = None
+    clear_brevo_key: bool = False
+    clear_smtp_pass: bool = False
+
+
+class MailTestRequest(BaseModel):
+    to_email: str
+
+
+class AdminUserUpdate(BaseModel):
+    name: str = ""
+    email: str = ""
+    password: str = ""

@@ -17,19 +17,21 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db
+from . import config, db
 from .agents import extractor, llm, matcher, planner, verifier
 from .auth import admin_router, current_user, require_admin, router as auth_router
 from .config import BASE_DIR
-from .models import (EmailChangeRequest, EventCreate, ExtractRequest, PasswordChangeRequest,
+from .models import (AdminUserUpdate, EmailChangeRequest, EventCreate, ExtractRequest,
+                     MailSettingsUpdate, MailTestRequest, PasswordChangeRequest,
                      SettingsCodeRequest)
 from .services import accounts, ics, mailer
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="1.2.6")
+app = FastAPI(title="Nudge · 校园截止管家", version="1.3.0")
 STATIC_DIR = Path(os.getenv("NUDGE_STATIC") or (BASE_DIR / "app" / "static"))
 
 db.init()
+mailer.apply_db_settings()
 # 部署到新机器时，环境变量里的 refresh token 会在启动时落进本机数据库
 mailer.ensure_token()
 app.include_router(auth_router)
@@ -110,6 +112,88 @@ def health() -> dict[str, Any]:
 def api_llm_status(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """主界面专用：当前用户是否已保存 Key，且真实连接到模型服务。"""
     return llm.user_status(user["id"])
+
+
+def _mail_admin_state() -> dict[str, Any]:
+    status = mailer.status()
+    return {
+        "mode": status["mode"],
+        "transport": status["transport"],
+        "sender": status["sender"],
+        "real_sending": status["real_sending"],
+        "dev_mode": status["dev_code_visible"],
+        "brevo": {
+            "sender": config.BREVO_SENDER,
+            "name": config.BREVO_SENDER_NAME,
+            "key_set": status["brevo"]["key_set"],
+        },
+        "smtp": {
+            "host": config.SMTP_HOST,
+            "port": config.SMTP_PORT,
+            "security": config.SMTP_SECURITY,
+            "user": config.SMTP_USER,
+            "sender": config.SMTP_SENDER,
+            "name": config.SMTP_SENDER_NAME,
+            "pass_set": status["smtp"]["pass_set"],
+            "verify_tls": config.SMTP_VERIFY_TLS,
+        },
+    }
+
+
+@app.get("/api/admin/mail")
+def api_admin_mail(_: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """管理端查看邮件通道状态；不返回任何密钥/密码。"""
+    return _mail_admin_state()
+
+
+@app.post("/api/admin/mail")
+def api_admin_mail_save(body: MailSettingsUpdate,
+                        _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    values: dict[str, str] = {}
+    if body.transport:
+        values["mail_transport"] = body.transport
+    if body.dev_mode is not None:
+        values["mail_dev"] = "1" if body.dev_mode else "0"
+    for key, value in (
+        ("mail_brevo_sender", body.brevo_sender),
+        ("mail_brevo_name", body.brevo_name),
+        ("mail_smtp_host", body.smtp_host),
+        ("mail_smtp_security", body.smtp_security),
+        ("mail_smtp_user", body.smtp_user),
+        ("mail_smtp_sender", body.smtp_sender),
+        ("mail_smtp_name", body.smtp_name),
+    ):
+        if value.strip():
+            values[key] = value.strip()
+    if body.brevo_key.strip():
+        values["mail_brevo_key"] = body.brevo_key.strip()
+    if body.clear_brevo_key:
+        values["mail_brevo_key"] = ""
+    if body.smtp_pass.strip():
+        values["mail_smtp_pass"] = body.smtp_pass.strip()
+    if body.clear_smtp_pass:
+        values["mail_smtp_pass"] = ""
+    if body.smtp_port is not None:
+        values["mail_smtp_port"] = str(body.smtp_port)
+    if body.smtp_verify_tls is not None:
+        values["mail_smtp_verify_tls"] = "1" if body.smtp_verify_tls else "0"
+    if values:
+        db.save_settings(values)
+        mailer.apply_db_settings()
+    return _mail_admin_state()
+
+
+@app.post("/api/admin/mail/test")
+def api_admin_mail_test(body: MailTestRequest,
+                        _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    to_email = (body.to_email or "").strip()
+    if "@" not in to_email:
+        raise HTTPException(400, "请填写有效的测试收件邮箱")
+    try:
+        result = mailer.send_test(to_email)
+    except mailer.MailError as error:
+        raise HTTPException(503, str(error)) from error
+    return {"ok": True, **result}
 
 
 @app.get("/api/settings")

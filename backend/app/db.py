@@ -14,7 +14,7 @@ from .models import EventDraft
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY, name TEXT, grade TEXT, major TEXT,
-  interests TEXT, token TEXT UNIQUE, created_at TEXT
+  interests TEXT, token TEXT UNIQUE, created_at TEXT, last_seen TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY, title TEXT, category TEXT, campus TEXT,
@@ -71,6 +71,7 @@ def init() -> None:
             ("is_admin", "INTEGER DEFAULT 0"),
             ("disabled", "INTEGER DEFAULT 0"),
             ("campus", "TEXT"),
+            ("last_seen", "TEXT"),
         ):
             try:
                 c.execute(f"ALTER TABLE users ADD COLUMN {column} {ddl}")
@@ -98,6 +99,54 @@ def init() -> None:
             "UPDATE users SET campus=? WHERE id=? AND (campus IS NULL OR campus='')",
             ("haidian", "u_demo"),
         )
+        _migrate_events_per_user(c)
+
+
+def _migrate_events_per_user(c: sqlite3.Connection) -> None:
+    """把历史共享事件拆成每用户一份；之后新事件也按用户各自去重。"""
+    if c.execute("SELECT 1 FROM settings WHERE key='events_per_user'").fetchone():
+        return
+    events = c.execute("SELECT * FROM events").fetchall()
+    for event in events:
+        user_ids = [
+            row["user_id"] for row in c.execute(
+                "SELECT user_id FROM user_events WHERE event_id=?", (event["id"],)
+            ).fetchall()
+        ]
+        if not user_ids:
+            c.execute("DELETE FROM events WHERE id=?", (event["id"],))
+            continue
+        data = dict(event)
+        # 先删除原行，否则 u1 的新去重键会和原事件行上的旧键冲突
+        c.execute("DELETE FROM events WHERE id=?", (data["id"],))
+        for user_id in user_ids:
+            new_id = "e_" + uuid.uuid4().hex[:10]
+            key = hashlib.sha1(
+                (user_id + "|" + data["title"].strip() + "|" + (data["deadline_end"] or "")).encode("utf-8")
+            ).hexdigest()[:16]
+            c.execute(
+                """INSERT INTO events(id,title,category,campus,deadline_start,deadline_end,
+                   deadline_raw,audience,materials,submission,evidence,source,importance,
+                   confidence,overall_confidence,dedup_key,created_at,status)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    new_id, data["title"], data["category"], data["campus"],
+                    data["deadline_start"], data["deadline_end"], data["deadline_raw"],
+                    data["audience"], data["materials"], data["submission"],
+                    data["evidence"], data["source"], data["importance"],
+                    data["confidence"], data["overall_confidence"], key,
+                    data["created_at"], data["status"],
+                ),
+            )
+            c.execute(
+                "UPDATE user_events SET event_id=? WHERE user_id=? AND event_id=?",
+                (new_id, user_id, data["id"]),
+            )
+            c.execute(
+                "UPDATE feedback SET event_id=? WHERE user_id=? AND event_id=?",
+                (new_id, user_id, data["id"]),
+            )
+    c.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('events_per_user','1')")
 
 
 def get_user(user_id: str) -> Optional[dict[str, Any]]:
@@ -119,15 +168,17 @@ def upsert_user(user_id: str, name: str, grade: str, major: str, interests: list
         )
 
 
-def dedup_key(draft: EventDraft) -> str:
+def dedup_key(draft: EventDraft, user_id: str | None = None) -> str:
     raw = (draft.title.strip() + "|" + (draft.deadline.end or "")).encode("utf-8")
+    if user_id:
+        raw = (user_id + "|").encode("utf-8") + raw
     return hashlib.sha1(raw).hexdigest()[:16]
 
 
 def save_event(draft: EventDraft, user_id: str, relevance: float = 0.5,
                reasons: list[str] | None = None) -> tuple[str, bool]:
-    """返回 (event_id, 是否新建)。重复事件直接复用，不产生第二条。"""
-    key = dedup_key(draft)
+    """返回 (event_id, 是否新建)。每个用户一条事件，同一用户重复保存直接复用。"""
+    key = dedup_key(draft, user_id)
     with conn() as c:
         row = c.execute("SELECT id FROM events WHERE dedup_key=?", (key,)).fetchone()
         created = row is None
@@ -290,6 +341,21 @@ def update_email(user_id: str, email: str) -> None:
         c.execute("UPDATE users SET email=? WHERE id=?", (email, user_id))
 
 
+def update_name(user_id: str, name: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE users SET name=? WHERE id=?", (name, user_id))
+
+
+def update_password_by_id(user_id: str, password_hash: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE users SET password_hash=? WHERE id=?", (password_hash, user_id))
+
+
+def touch_last_seen(user_id: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE users SET last_seen=? WHERE id=?", (now_iso(), user_id))
+
+
 def update_campus(user_id: str, campus: str) -> None:
     with conn() as c:
         c.execute("UPDATE users SET campus=? WHERE id=?", (campus, user_id))
@@ -298,11 +364,29 @@ def update_campus(user_id: str, campus: str) -> None:
 def list_users() -> list[dict[str, Any]]:
     with conn() as c:
         rows = c.execute(
-            """SELECT u.id, u.name, u.email, u.is_admin, u.created_at,
-                      (SELECT COUNT(*) FROM user_events ue WHERE ue.user_id=u.id) AS event_count
+            """SELECT u.id, u.name, u.email, u.is_admin, u.created_at, u.last_seen,
+                      u.campus, u.disabled,
+                      (SELECT COUNT(*) FROM user_events ue WHERE ue.user_id=u.id) AS event_count,
+                      EXISTS(SELECT 1 FROM user_settings s
+                             WHERE s.user_id=u.id AND s.key='api_key' AND s.value<>'') AS has_key
                FROM users u ORDER BY u.created_at ASC"""
         ).fetchall()
-    return [dict(r) for r in rows]
+    now = datetime.now(timezone.utc)
+    users = []
+    for row in rows:
+        user = dict(row)
+        last_seen = user.get("last_seen")
+        online = False
+        if last_seen:
+            try:
+                online = (now - datetime.fromisoformat(last_seen)).total_seconds() <= 300
+            except ValueError:
+                online = False
+        user["online"] = online
+        user["status"] = "在线" if online else ("离线" if last_seen else "未活跃")
+        user["status_key"] = "online" if online else ("offline" if last_seen else "idle")
+        users.append(user)
+    return users
 
 
 def delete_user(user_id: str) -> bool:

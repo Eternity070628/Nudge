@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from . import db
 from .agents import llm
-from .models import LoginRequest, RegisterRequest, ResetRequest, SendCodeRequest
+from .models import (AdminUserUpdate, LoginRequest, RegisterRequest, ResetRequest,
+                     SendCodeRequest)
 from .services import accounts, mailer
 
 SESSION_COOKIE = "nudge_session"
@@ -20,6 +21,7 @@ def current_user(request: Request) -> dict[str, Any]:
     user = accounts.session_user(token)
     if not user:
         raise HTTPException(401, "请先登录")
+    db.touch_last_seen(user["id"])
     return user
 
 
@@ -126,9 +128,19 @@ def _admin_detail(user_id: str) -> dict[str, Any]:
     if not user:
         raise HTTPException(404, "用户不存在")
     base, model, key = llm.current(user_id)
+    listed = next((item for item in db.list_users() if item["id"] == user_id), {})
+    public = accounts.public_user(user) or {}
+    public.update({
+        "online": listed.get("online", False),
+        "status": listed.get("status", "未活跃"),
+        "status_key": listed.get("status_key", "idle"),
+        "event_count": listed.get("event_count", 0),
+        "has_saved_key": listed.get("has_key", False),
+    })
     return {
-        "user": accounts.public_user(user),
-        "model": {"base_url": base, "model": model, "has_key": bool(key)},
+        "user": public,
+        "model": {"base_url": base, "model": model, "has_key": bool(key),
+                  "mode": llm.mode(user_id) or "auto"},
         "events": db.list_events(user_id),
     }
 
@@ -147,6 +159,39 @@ def api_admin_users_detail(ids: str = Query(""),
 def api_admin_user_detail(user_id: str, _: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     """管理员看某个用户的事件与模型配置；只返回是否有 Key，不返回 Key。"""
     return _admin_detail(user_id)
+
+
+@admin_router.patch("/users/{user_id}")
+def api_admin_update_user(user_id: str, body: AdminUserUpdate,
+                          admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """管理员直接改邮箱/昵称/密码，不需要邮箱验证码。"""
+    target = db.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "用户不存在")
+    name = (body.name or "").strip()
+    email = (body.email or "").strip()
+    password = body.password or ""
+    if name:
+        if not 1 <= len(name) <= 20:
+            raise HTTPException(400, "昵称长度需要 1–20 个字")
+        db.update_name(user_id, name)
+    if email:
+        try:
+            email = accounts.validate_email(email)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+        existing = db.get_user_by_email(email)
+        if existing and existing["id"] != user_id:
+            raise HTTPException(400, "该邮箱已被其他用户使用")
+        db.update_email(user_id, email)
+    if password:
+        if len(password) < 8:
+            raise HTTPException(400, "密码至少 8 位")
+        db.update_password_by_id(user_id, accounts.hash_password(password))
+        if user_id != admin["id"]:
+            db.delete_user_sessions(user_id)
+    detail = _admin_detail(user_id)
+    return {"ok": True, "user": detail["user"]}
 
 
 @admin_router.delete("/users/{user_id}")
