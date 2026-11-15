@@ -170,6 +170,8 @@ def run_gui(server, url: str, data_dir: Path, no_browser: bool) -> int:
     link = ttk.Label(frame, text=url, foreground="#d97706")
     link.pack(anchor="w", pady=(10, 0))
     ttk.Label(frame, text=f"数据目录：{data_dir}", foreground="#6b7280").pack(anchor="w", pady=(6, 0))
+    ttk.Label(frame, text="关闭窗口只会最小化，服务继续运行；要退出请点「退出」。",
+              foreground="#6b7280").pack(anchor="w", pady=(6, 0))
 
     actions = ttk.Frame(frame)
     actions.pack(anchor="w", pady=(18, 0))
@@ -183,7 +185,7 @@ def run_gui(server, url: str, data_dir: Path, no_browser: bool) -> int:
 
     ttk.Button(actions, text="打开 Nudge", command=open_web).pack(side="left")
     ttk.Button(actions, text="退出", command=shutdown).pack(side="left", padx=(10, 0))
-    root.protocol("WM_DELETE_WINDOW", shutdown)
+    root.protocol("WM_DELETE_WINDOW", root.iconify)
     root.after(300, lambda: open_browser(url, no_browser))
     try:
         root.mainloop()

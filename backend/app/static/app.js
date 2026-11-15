@@ -21,7 +21,18 @@ function el(tag, cls, text) {
 
 async function api(path, opts) {
   const init = Object.assign({ headers: { "Content-Type": "application/json" } }, opts || {});
-  const res = await fetch(path, init);
+  let res = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      res = await fetch(path, init);
+      break;
+    } catch (e) {
+      if (attempt === 2) {
+        throw new Error("无法连接 Nudge 本地服务：请确认 Nudge 控制窗口仍在运行（关闭窗口会最小化，点「退出」才会停止服务）。");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+  }
   if (!res.ok) {
     let msg = "请求失败 (" + res.status + ")";
     try { const j = await res.json(); if (j.detail) msg = j.detail; } catch (e) {}
