@@ -256,13 +256,13 @@ def _merge_users(central_users: list[dict[str, Any]],
                 "event_count": local.get("event_count", 0),
                 "has_key": local.get("has_key", False),
                 "campus": local.get("campus") or account.get("campus") or "",
-                "remote_only": False, "local_only": False,
+                "remote_only": False, "local_only": False, "central_missing": False,
             })
         else:
             item.update({
                 "id": "central:" + central_id, "local_id": "",
                 "event_count": 0, "has_key": bool(account.get("has_key")),
-                "remote_only": True, "local_only": False,
+                "remote_only": True, "local_only": False, "central_missing": False,
             })
         merged.append(item)
     for local in local_users:
@@ -270,7 +270,9 @@ def _merge_users(central_users: list[dict[str, Any]],
             continue
         item = dict(local)
         item.setdefault("central_id", "")
-        item.update({"local_id": local["id"], "remote_only": False, "local_only": True})
+        missing = bool(item["central_id"])
+        item.update({"local_id": local["id"], "remote_only": False,
+                     "local_only": not missing, "central_missing": missing})
         merged.append(item)
     return merged
 
@@ -350,10 +352,62 @@ def api_admin_user_detail(user_id: str, _: dict[str, Any] = Depends(require_admi
     return _admin_detail(user_id)
 
 
+CENTRAL_PREFIX = "central:"
+
+
+def _central_admin_token(admin: dict[str, Any]) -> str:
+    """管理中心账号需要管理员自己的中心会话。"""
+    if not central.enabled():
+        raise HTTPException(400, "未配置共享账号服务")
+    token = central.session_token(admin["id"])
+    if not token:
+        raise HTTPException(403, "请退出后重新登录，以取得共享账号中心会话")
+    return token
+
+
+def _delete_central_account(central_id: str, admin: dict[str, Any]) -> None:
+    """删除中心账号；中心已不存在视为成功，保证重试幂等。"""
+    if central_id in ("u_admin", "u_demo"):
+        raise HTTPException(400, "内置账号不能删除")
+    token = _central_admin_token(admin)
+    try:
+        central.admin_delete(token, central_id)
+    except central.CentralError as error:
+        if error.status != 404:
+            _central_failure(error)
+
+
+def _update_remote_user(central_id: str, body: AdminUserUpdate,
+                        admin: dict[str, Any]) -> dict[str, Any]:
+    """仅网页版账号：改中心，不在本机凭空建镜像。"""
+    token = _central_admin_token(admin)
+    try:
+        result = central.admin_update(token, central_id, {
+            "name": (body.name or "").strip(),
+            "email": (body.email or "").strip(),
+            "password": body.password or "",
+        })
+    except central.CentralError as error:
+        _central_failure(error)
+    central_user = (result or {}).get("user") or {}
+    if not central_user.get("id"):
+        raise HTTPException(502, "共享账号中心返回缺少用户 id")
+    local = db.get_user_by_central_id(central_id)
+    user = dict(central_user)
+    user.update({
+        "id": CENTRAL_PREFIX + central_id,
+        "local_id": local["id"] if local else "",
+        "remote_only": True, "local_only": False, "central_missing": False,
+    })
+    return {"ok": True, "user": user}
+
+
 @admin_router.patch("/users/{user_id}")
 def api_admin_update_user(user_id: str, body: AdminUserUpdate,
                           admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
-    """管理员直接改邮箱/昵称/密码，不需要邮箱验证码。"""
+    """管理员直接改邮箱/昵称/密码；仅网页版账号直接改中心。"""
+    if user_id.startswith(CENTRAL_PREFIX):
+        return _update_remote_user(user_id[len(CENTRAL_PREFIX):], body, admin)
     target = db.get_user(user_id)
     if not target:
         raise HTTPException(404, "用户不存在")
@@ -404,11 +458,28 @@ def api_admin_update_user(user_id: str, body: AdminUserUpdate,
 
 
 @admin_router.delete("/users/{user_id}")
-def api_admin_delete_user(user_id: str, admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+def api_admin_delete_user(user_id: str, skip_central: bool = Query(False),
+                          admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """删除账号；带 central_id 时同步删中心，仅网页版账号直接删中心。"""
+    if user_id.startswith(CENTRAL_PREFIX):
+        central_id = user_id[len(CENTRAL_PREFIX):]
+        local = db.get_user_by_central_id(central_id)
+        if admin.get("central_id") == central_id or (local and local["id"] == admin["id"]):
+            raise HTTPException(400, "不能删除自己")
+        _delete_central_account(central_id, admin)
+        if local:
+            db.delete_user(local["id"])
+        return {"ok": True, "remote": True}
     if user_id in ("u_admin", "u_demo"):
         raise HTTPException(400, "内置账号不能删除")
     if user_id == admin["id"]:
         raise HTTPException(400, "不能删除自己")
+    target = db.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "用户不存在")
+    remote = bool(target.get("central_id")) and not skip_central
+    if remote:
+        _delete_central_account(target["central_id"], admin)
     if not db.delete_user(user_id):
         raise HTTPException(404, "用户不存在")
-    return {"ok": True}
+    return {"ok": True, "remote": remote}

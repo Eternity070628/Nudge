@@ -1132,7 +1132,7 @@ let adminEditId = null;
 
 function openAdminEdit(user) {
   adminEditId = user.id;
-  $("admin-edit-target").textContent = (user.name || "未命名") + " · " + user.id;
+  $("admin-edit-target").textContent = (user.name || "未命名") + " · " + (user.email || user.id);
   $("admin-edit-name").value = user.name || "";
   $("admin-edit-email").value = user.email || "";
   $("admin-edit-password").value = "";
@@ -1151,7 +1151,7 @@ async function saveAdminEdit(event) {
       email: $("admin-edit-email").value.trim(),
       password: $("admin-edit-password").value,
     };
-    const result = await api("/api/admin/users/" + adminEditId, { method: "PATCH", body: JSON.stringify(body) });
+    const result = await api("/api/admin/users/" + encodeURIComponent(adminEditId), { method: "PATCH", body: JSON.stringify(body) });
     setAuthStatus("admin-edit-status", "已保存 " + (result.user.name || result.user.id), "success");
     $("admin-edit-dialog").close();
     loadAdminUsers();
@@ -1163,41 +1163,41 @@ async function saveAdminEdit(event) {
 }
 
 function renderAdminRow(u) {
-  const readonly = !!u.remote_only;
-  const row = el("div", "user-row" + (readonly ? " user-row-readonly" : ""));
+  const remote = !!u.remote_only;
+  const missing = !!u.central_missing;
+  const row = el("div", "user-row" + (remote ? " user-row-readonly" : ""));
   const check = document.createElement("input");
   check.type = "checkbox";
   check.className = "user-check";
-  check.title = readonly ? "网页版账号在本机登录后才能加入对比" : "加入对比";
-  check.disabled = readonly;
-  check.checked = !readonly && state.adminSelected.has(u.id);
+  check.title = remote ? "网页版账号在本机有事件后才能加入对比" : "加入对比";
+  check.disabled = remote;
+  check.checked = !remote && state.adminSelected.has(u.id);
   check.onchange = () => {
     if (check.checked) state.adminSelected.add(u.id);
     else state.adminSelected.delete(u.id);
     updateCompareButton();
   };
   row.appendChild(check);
-  const tag = (u.is_admin ? " · 管理员" : "") + (readonly ? " · 仅网页版" : (u.local_only ? " · 仅本机" : ""));
+  const tag = (u.is_admin ? " · 管理员" : "")
+    + (remote ? " · 仅网页版" : missing ? " · 中心已删除" : (u.local_only ? " · 仅本机" : ""));
   row.appendChild(el("div", "user-main", (u.name || "未命名") + tag));
   row.appendChild(el("div", "user-email", u.email || "无邮箱"));
   const status = el("div", "user-status " + (u.status_key || "idle"));
   status.appendChild(el("b", null, u.status || "未活跃"));
   status.appendChild(el("small", null, u.last_seen ? "最后 " + shortTime(u.last_seen) : "从未登录"));
   row.appendChild(status);
-  row.appendChild(el("div", "user-count", readonly ? "—" : (u.event_count || 0) + " 个事件"));
-  const keyText = readonly
+  row.appendChild(el("div", "user-count", remote ? "—" : (u.event_count || 0) + " 个事件"));
+  const keyText = remote
     ? (u.has_key ? "网页版 Key 已配" : "网页版未配 Key")
     : (u.has_key ? "Key 已配" : "未配 Key");
   row.appendChild(el("div", "user-key" + (u.has_key ? " set" : ""), keyText));
-  if (readonly) {
-    row.appendChild(el("div", "user-actions tiny", "在本机登录后即可管理"));
-    return row;
-  }
   const actions = el("div", "user-actions");
-  const view = el("button", "btn ghost btn-mini", "查看");
-  view.type = "button";
-  view.onclick = () => loadAdminCompare([u.id]);
-  actions.appendChild(view);
+  if (!remote) {
+    const view = el("button", "btn ghost btn-mini", "查看");
+    view.type = "button";
+    view.onclick = () => loadAdminCompare([u.id]);
+    actions.appendChild(view);
+  }
   const edit = el("button", "btn ghost btn-mini", "编辑");
   edit.type = "button";
   edit.onclick = () => openAdminEdit(u);
@@ -1205,18 +1205,30 @@ function renderAdminRow(u) {
   if (!u.is_admin && u.id !== "u_demo") {
     const remove = el("button", "btn ghost btn-mini", "删除");
     remove.type = "button";
-    remove.onclick = async () => {
-      if (!confirm("删除用户并清理其事件和反馈？")) return;
-      try {
-        await api("/api/admin/users/" + u.id, { method: "DELETE" });
-        state.adminSelected.delete(u.id);
-        loadAdminUsers();
-      } catch (e) { alert(e.message); }
-    };
+    remove.onclick = () => removeAdminUser(u);
     actions.appendChild(remove);
   }
   row.appendChild(actions);
   return row;
+}
+
+async function removeAdminUser(u) {
+  const missing = !!u.central_missing;
+  const tip = u.remote_only
+    ? "删除网页版账号？删除后所有实例都不能再用它登录。"
+    : missing
+      ? "清理本机残留账号并删除其事件？网页版账号已不存在。"
+      : u.central_id
+        ? "删除用户并同步删除网页版账号？本机事件会一并清理。"
+        : "删除用户并清理其事件和反馈？";
+  if (!confirm(tip)) return;
+  const suffix = missing ? "?skip_central=1" : "";
+  const path = "/api/admin/users/" + encodeURIComponent(u.id) + suffix;
+  try {
+    await api(path, { method: "DELETE" });
+    state.adminSelected.delete(u.id);
+    loadAdminUsers();
+  } catch (e) { alert(e.message); }
 }
 
 async function loadAdminUsers() {
@@ -1224,8 +1236,10 @@ async function loadAdminUsers() {
   try {
     const data = await api("/api/admin/users");
     const remote = data.users.filter((u) => u.remote_only).length;
+    const missing = data.users.filter((u) => u.central_missing).length;
     let count = data.users.length + " 人";
     if (data.central) count += " · 与网页版一致，" + remote + " 个仅网页版";
+    if (missing) count += "，" + missing + " 个中心已删除";
     if (data.error) count += " · 中心暂不可达：" + data.error;
     $("admin-count").textContent = count;
     box.innerHTML = "";

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 import urllib.error
@@ -32,8 +33,13 @@ def url() -> str:
     return (config.NUDGE_CENTRAL_URL or "").strip().rstrip("/")
 
 
+def is_central() -> bool:
+    """中心端自身不再向外代理，避免删除/改资料时递归调用自己。"""
+    return os.getenv("NUDGE_IS_CENTRAL") == "1"
+
+
 def enabled() -> bool:
-    return bool(url())
+    return bool(url()) and not is_central()
 
 
 def _request(path: str, method: str = "POST", payload=None, token: str = ""):
@@ -131,6 +137,12 @@ def admin_users(token: str) -> dict:
 def admin_update(token: str, central_id: str, payload: dict) -> dict:
     body, _ = _request("/api/admin/users/" + urllib.parse.quote(central_id, safe=""),
                        method="PATCH", payload=payload, token=token)
+    return body
+
+
+def admin_delete(token: str, central_id: str) -> dict:
+    body, _ = _request("/api/admin/users/" + urllib.parse.quote(central_id, safe=""),
+                       method="DELETE", token=token)
     return body
 
 

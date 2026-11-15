@@ -10,6 +10,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "backend"))
 os.environ.setdefault("NUDGE_DATA", str(REPO / "backend" / "data"))
+# 本实例就是共享账号中心：账号操作一律落在本库，不再向外代理
+os.environ.setdefault("NUDGE_IS_CENTRAL", "1")
 # 免费帐号出网有白名单，DeepSeek/MaaS 大概率连不上；设 0 可强制打开 LLM
 os.environ.setdefault("NUDGE_DISABLE_LLM", "1")
 

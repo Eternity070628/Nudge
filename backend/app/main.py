@@ -27,7 +27,7 @@ from .models import (AdminUserUpdate, CentralPresence, CentralSettingsUpdate,
 from .services import accounts, central, ics, mailer
 from .services.seed import SAMPLES
 
-app = FastAPI(title="Nudge · 校园截止管家", version="2.0.0")
+app = FastAPI(title="Nudge · 校园截止管家", version="2.0.1")
 STATIC_DIR = Path(os.getenv("NUDGE_STATIC") or (BASE_DIR / "app" / "static"))
 
 db.init()
