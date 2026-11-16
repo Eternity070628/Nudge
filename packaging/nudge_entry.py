@@ -115,7 +115,7 @@ def health(port: int):
 
 
 def find_running():
-    for port in range(8000, 8011):
+    for port in range(8000, 8030):
         data = health(port)
         if data and data.get("app") == "nudge":
             return port
@@ -211,12 +211,168 @@ def run_headless(server, url: str, no_browser: bool) -> int:
     return 0
 
 
+_runtime: dict = {"window": None, "tray": None, "tray_ready": False}
+
+
+def asset_path(name: str) -> Path:
+    for base in (bundle_root() / "assets", bundle_root() / "packaging" / "assets"):
+        path = base / name
+        if path.is_file():
+            return path
+    return bundle_root() / "assets" / name
+
+
+def focus_existing(data_dir: Path) -> bool:
+    """已有实例在跑时，让它的窗口回到前台，而不是再开一个新的。"""
+    try:
+        state = json.loads((data_dir / "instance.json").read_text(encoding="utf-8"))
+        control = int(state.get("control"))
+    except Exception:
+        return False
+    try:
+        with socket.create_connection(("127.0.0.1", control), timeout=1.2) as sock:
+            sock.sendall(b"focus\n")
+            return sock.recv(16).startswith(b"ok")
+    except OSError:
+        return False
+
+
+def start_focus_channel(data_dir: Path, on_focus) -> int:
+    """监听本机唤起请求；再次双击图标时把已有窗口提到前台。"""
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("127.0.0.1", 0))
+    server.listen(4)
+    port = server.getsockname()[1]
+    try:
+        (data_dir / "instance.json").write_text(
+            json.dumps({"control": port}), encoding="utf-8"
+        )
+    except OSError:
+        logging.warning("无法写入 instance.json，再次双击不会唤起已有窗口")
+
+    def loop():
+        while True:
+            try:
+                conn, _ = server.accept()
+            except OSError:
+                return
+            try:
+                command = conn.recv(64).decode("utf-8", "replace").strip()
+                if command.startswith("focus"):
+                    on_focus()
+                    conn.sendall(b"ok")
+            except OSError:
+                pass
+            finally:
+                conn.close()
+
+    threading.Thread(target=loop, name="nudge-focus", daemon=True).start()
+    return port
+
+
+def start_tray(window, server, restore) -> None:
+    """托盘常驻：关闭窗口只是隐藏，托盘菜单可重新打开或退出。"""
+    try:
+        import pystray
+        from PIL import Image
+
+        image = Image.open(asset_path("nudge.png"))
+    except Exception:
+        logging.exception("托盘组件不可用，关闭窗口将直接退出应用")
+        return
+
+    def quit_app(icon, _item):
+        icon.stop()
+        server.should_exit = True
+        try:
+            window.destroy()
+        except Exception:
+            logging.exception("关闭窗口失败")
+
+    menu = pystray.Menu(
+        pystray.MenuItem("打开 Nudge", lambda _icon, _item: restore(), default=True),
+        pystray.MenuItem("退出", quit_app),
+    )
+    icon = pystray.Icon("nudge", image, APP_TITLE, menu)
+    _runtime["tray"] = icon
+
+    def serve():
+        _runtime["tray_ready"] = True
+        try:
+            icon.run()
+        except Exception:
+            logging.exception("托盘启动失败，关闭窗口改为退出应用")
+            _runtime["tray_ready"] = False
+
+    threading.Thread(target=serve, name="nudge-tray", daemon=True).start()
+
+
+def close_soon(window, delay: float = 4.0) -> None:
+    time.sleep(delay)
+    try:
+        window.destroy()
+    except Exception:
+        pass
+
+
+def run_app(server, url: str, data_dir: Path, no_browser: bool,
+            window_check: bool = False) -> int:
+    """浏览器套壳：一个原生窗口承载界面，任务栏显示独立的 Nudge 进程。"""
+    try:
+        import webview
+    except Exception:
+        logging.warning("未安装 pywebview，回退到浏览器模式")
+        return run_gui(server, url, data_dir, no_browser)
+
+    window = webview.create_window(
+        APP_TITLE, url, width=1200, height=780, min_size=(900, 620),
+    )
+    _runtime["window"] = window
+
+    def restore():
+        try:
+            window.show()
+            window.restore()
+            window.on_top = True
+            window.on_top = False
+        except Exception:
+            logging.exception("恢复窗口失败")
+
+    def on_closing():
+        if _runtime.get("tray_ready") and not window_check:
+            window.hide()
+            return False
+        server.should_exit = True
+        return True
+
+    window.events.closing += on_closing
+    start_focus_channel(data_dir, lambda: restore())
+    if not window_check:
+        start_tray(window, server, restore)
+    else:
+        threading.Thread(target=close_soon, args=(window,), daemon=True).start()
+    try:
+        webview.start()
+    except Exception:
+        logging.exception("套壳启动失败，回退到浏览器模式")
+        tray = _runtime.get("tray")
+        if tray:
+            try:
+                tray.stop()
+            except Exception:
+                pass
+        return run_gui(server, url, data_dir, no_browser)
+    server.should_exit = True
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=APP_TITLE)
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--window-check", action="store_true")
     args = parser.parse_args(argv)
 
     root, data_dir, static_dir = setup_environment()
@@ -226,7 +382,8 @@ def main(argv=None) -> int:
     running = find_running()
     if running:
         logging.info("已有 Nudge 实例运行在端口 %s", running)
-        open_browser(f"http://127.0.0.1:{running}", args.no_browser)
+        if not focus_existing(data_dir):
+            open_browser(f"http://127.0.0.1:{running}", args.no_browser)
         return 0
 
     from app.main import app as fastapi_app
@@ -256,7 +413,7 @@ def main(argv=None) -> int:
     logging.info("Nudge 已就绪：%s", url)
     if args.headless:
         return run_headless(server, url, args.no_browser)
-    return run_gui(server, url, data_dir, args.no_browser)
+    return run_app(server, url, data_dir, args.no_browser, args.window_check)
 
 
 def write_crash_log(exc: BaseException) -> None:

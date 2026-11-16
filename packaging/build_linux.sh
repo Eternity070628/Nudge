@@ -24,9 +24,11 @@ echo "[build] PyInstaller $VERSION / linux-$ARCH_LABEL"
 "$PYTHON" -m PyInstaller \
   --noconfirm --clean --onedir --name nudge \
   --add-data "backend/app/static:backend/app/static" \
+  --add-data "packaging/assets/nudge.png:assets" \
   --paths backend \
   --collect-submodules uvicorn \
   --collect-submodules app \
+  --collect-submodules pystray \
   --hidden-import app.main \
   --distpath dist --workpath build \
   packaging/nudge_entry.py

@@ -20,9 +20,13 @@ Write-Host "[build] PyInstaller $Version / windows-$Arch"
   --noconfirm --clean --onedir --windowed --name Nudge `
   --icon "packaging/assets/nudge.ico" `
   --add-data "backend/app/static;backend/app/static" `
+  --add-data "packaging/assets/nudge.png;assets" `
   --paths backend `
   --collect-submodules uvicorn `
   --collect-submodules app `
+  --collect-submodules webview `
+  --collect-submodules pystray `
+  --hidden-import webview.platforms.edgechromium `
   --hidden-import app.main `
   --distpath dist --workpath build `
   "packaging/nudge_entry.py"
