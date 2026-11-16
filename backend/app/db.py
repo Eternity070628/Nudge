@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS central_presence (
   event_count INTEGER DEFAULT 0, has_key INTEGER DEFAULT 0, campus TEXT,
   PRIMARY KEY (user_id, instance_id)
 );
+CREATE TABLE IF NOT EXISTS event_sync (
+  user_id TEXT NOT NULL, dedup_key TEXT NOT NULL, updated_at TEXT,
+  deleted INTEGER DEFAULT 0, PRIMARY KEY (user_id, dedup_key)
+);
 """
 
 ADMIN_EMAIL = "Eternity070628@bupt.edu.cn"
@@ -95,6 +99,11 @@ def init() -> None:
             c.execute("ALTER TABLE events ADD COLUMN campus TEXT")
         except sqlite3.OperationalError:
             pass
+        for table in ("events", "user_events"):
+            try:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN updated_at TEXT")
+            except sqlite3.OperationalError:
+                pass
         c.execute(
             "INSERT OR IGNORE INTO users(id,name,grade,major,interests,token,created_at) VALUES(?,?,?,?,?,?,?)",
             ("u_demo", "张同学", "2024级", "计算机学院",
@@ -188,10 +197,23 @@ def dedup_key(draft: EventDraft, user_id: str | None = None) -> str:
     return hashlib.sha1(raw).hexdigest()[:16]
 
 
+def _touch_sync(c: sqlite3.Connection, user_id: str, event_id: str, stamp: str) -> None:
+    row = c.execute("SELECT dedup_key FROM events WHERE id=?", (event_id,)).fetchone()
+    if not row or not row["dedup_key"]:
+        return
+    c.execute(
+        """INSERT INTO event_sync(user_id,dedup_key,updated_at,deleted) VALUES(?,?,?,0)
+           ON CONFLICT(user_id,dedup_key) DO UPDATE SET
+             updated_at=excluded.updated_at, deleted=0""",
+        (user_id, row["dedup_key"], stamp),
+    )
+
+
 def save_event(draft: EventDraft, user_id: str, relevance: float = 0.5,
                reasons: list[str] | None = None) -> tuple[str, bool]:
     """返回 (event_id, 是否新建)。每个用户一条事件，同一用户重复保存直接复用。"""
     key = dedup_key(draft, user_id)
+    stamp = now_iso()
     with conn() as c:
         row = c.execute("SELECT id FROM events WHERE dedup_key=?", (key,)).fetchone()
         created = row is None
@@ -200,7 +222,8 @@ def save_event(draft: EventDraft, user_id: str, relevance: float = 0.5,
             c.execute(
                 """INSERT INTO events(id,title,category,campus,deadline_start,deadline_end,deadline_raw,
                    audience,materials,submission,evidence,source,importance,confidence,
-                   overall_confidence,dedup_key,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   overall_confidence,dedup_key,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     eid, draft.title, draft.category, draft.campus,
                     draft.deadline.start, draft.deadline.end, draft.deadline.raw,
@@ -212,11 +235,12 @@ def save_event(draft: EventDraft, user_id: str, relevance: float = 0.5,
                     draft.importance,
                     json.dumps(draft.confidence, ensure_ascii=False),
                     draft.overall_confidence,
-                    key, now_iso(),
+                    key, stamp, stamp,
                 ),
             )
         else:
             eid = row["id"]
+            c.execute("UPDATE events SET updated_at=? WHERE id=?", (stamp, eid))
         c.execute(
             "UPDATE events SET campus=? WHERE id=? AND (campus IS NULL OR campus='')",
             (draft.campus, eid),
@@ -225,12 +249,14 @@ def save_event(draft: EventDraft, user_id: str, relevance: float = 0.5,
             "SELECT 1 FROM user_events WHERE user_id=? AND event_id=?", (user_id, eid)
         ).fetchone() is not None
         c.execute(
-            """INSERT INTO user_events(user_id,event_id,relevance,reasons,created_at)
-               VALUES(?,?,?,?,?)
+            """INSERT INTO user_events(user_id,event_id,relevance,reasons,created_at,updated_at)
+               VALUES(?,?,?,?,?,?)
                ON CONFLICT(user_id,event_id) DO UPDATE SET
-                 relevance=excluded.relevance, reasons=excluded.reasons""",
-            (user_id, eid, relevance, json.dumps(reasons or [], ensure_ascii=False), now_iso()),
+                 relevance=excluded.relevance, reasons=excluded.reasons,
+                 updated_at=excluded.updated_at""",
+            (user_id, eid, relevance, json.dumps(reasons or [], ensure_ascii=False), stamp, stamp),
         )
+        _touch_sync(c, user_id, eid, stamp)
     return eid, not had_user_event
 
 
@@ -264,9 +290,11 @@ def get_event(event_id: str) -> Optional[dict[str, Any]]:
 
 
 def mark_done(user_id: str, event_id: str) -> None:
+    stamp = now_iso()
     with conn() as c:
-        c.execute("UPDATE user_events SET done_at=? WHERE user_id=? AND event_id=?",
-                  (now_iso(), user_id, event_id))
+        c.execute("UPDATE user_events SET done_at=?, updated_at=? WHERE user_id=? AND event_id=?",
+                  (stamp, stamp, user_id, event_id))
+        _touch_sync(c, user_id, event_id, stamp)
 
 
 def add_feedback(user_id: str, event_id: str, kind: str) -> None:
@@ -572,18 +600,163 @@ def mark_email_code_used(code_id: str) -> None:
 
 
 def mark_active(user_id: str, event_id: str) -> None:
+    stamp = now_iso()
     with conn() as c:
-        c.execute("UPDATE user_events SET done_at=NULL WHERE user_id=? AND event_id=?", (user_id, event_id))
+        c.execute("UPDATE user_events SET done_at=NULL, updated_at=? WHERE user_id=? AND event_id=?",
+                  (stamp, user_id, event_id))
+        _touch_sync(c, user_id, event_id, stamp)
+
+
+def _delete_user_event_rows(c: sqlite3.Connection, user_id: str, event_id: str) -> None:
+    c.execute("DELETE FROM user_events WHERE user_id=? AND event_id=?", (user_id, event_id))
+    c.execute("DELETE FROM feedback WHERE user_id=? AND event_id=?", (user_id, event_id))
+    left = c.execute("SELECT COUNT(*) n FROM user_events WHERE event_id=?", (event_id,)).fetchone()["n"]
+    if not left:
+        c.execute("DELETE FROM events WHERE id=?", (event_id,))
+
+
+def _mark_sync_deleted(c: sqlite3.Connection, user_id: str, key: str, stamp: str) -> None:
+    c.execute(
+        """INSERT INTO event_sync(user_id,dedup_key,updated_at,deleted) VALUES(?,?,?,1)
+           ON CONFLICT(user_id,dedup_key) DO UPDATE SET
+             updated_at=excluded.updated_at, deleted=1""",
+        (user_id, key, stamp),
+    )
 
 
 def delete_event(user_id: str, event_id: str) -> bool:
+    stamp = now_iso()
     with conn() as c:
-        row = c.execute("SELECT 1 FROM user_events WHERE user_id=? AND event_id=?", (user_id, event_id)).fetchone()
+        row = c.execute(
+            """SELECT e.dedup_key FROM user_events ue JOIN events e ON e.id=ue.event_id
+               WHERE ue.user_id=? AND ue.event_id=?""",
+            (user_id, event_id),
+        ).fetchone()
         if not row:
             return False
-        c.execute("DELETE FROM user_events WHERE user_id=? AND event_id=?", (user_id, event_id))
-        c.execute("DELETE FROM feedback WHERE user_id=? AND event_id=?", (user_id, event_id))
-        left = c.execute("SELECT COUNT(*) n FROM user_events WHERE event_id=?", (event_id,)).fetchone()["n"]
-        if not left:
-            c.execute("DELETE FROM events WHERE id=?", (event_id,))
+        if row["dedup_key"]:
+            _mark_sync_deleted(c, user_id, row["dedup_key"], stamp)
+        _delete_user_event_rows(c, user_id, event_id)
     return True
+
+
+def _event_values(data: dict[str, Any]) -> tuple:
+    return (
+        data.get("title") or "", data.get("category") or "", data.get("campus") or "",
+        data.get("deadline_start") or "", data.get("deadline_end") or "",
+        data.get("deadline_raw") or "",
+        json.dumps(data.get("audience") or {}, ensure_ascii=False),
+        json.dumps(data.get("materials") or [], ensure_ascii=False),
+        json.dumps(data.get("submission") or {}, ensure_ascii=False),
+        json.dumps(data.get("evidence") or {}, ensure_ascii=False),
+        json.dumps(data.get("source") or {}, ensure_ascii=False),
+        int(data.get("importance") or 3),
+        json.dumps(data.get("confidence") or {}, ensure_ascii=False),
+        float(data.get("overall_confidence") or 0.0),
+        data.get("status") or "active",
+    )
+
+
+def export_sync(user_id: str) -> dict[str, Any]:
+    """导出本用户全部有效事件与删除墓碑，用于推送到中心。"""
+    events = list_events(user_id)
+    with conn() as c:
+        rows = c.execute(
+            "SELECT dedup_key, updated_at, deleted FROM event_sync WHERE user_id=?",
+            (user_id,),
+        ).fetchall()
+    stamps = {r["dedup_key"]: r for r in rows}
+    payload = []
+    for event in events:
+        key = event.get("dedup_key") or ""
+        meta = stamps.get(key)
+        stamp = (meta["updated_at"] if meta else event.get("created_at")) or ""
+        payload.append({**event, "updated_at": stamp})
+    deleted = [{"dedup_key": r["dedup_key"], "updated_at": r["updated_at"] or ""}
+               for r in rows if r["deleted"]]
+    return {"events": payload, "deleted": deleted}
+
+
+def apply_sync_event(user_id: str, data: dict[str, Any]) -> bool:
+    """按 dedup_key 做 last-write-wins 合并远端事件；返回是否有变化。"""
+    key = (data.get("dedup_key") or "").strip()
+    if not key:
+        return False
+    stamp = data.get("updated_at") or now_iso()
+    values = _event_values(data)
+    with conn() as c:
+        meta = c.execute(
+            "SELECT updated_at FROM event_sync WHERE user_id=? AND dedup_key=?",
+            (user_id, key),
+        ).fetchone()
+        if meta and (meta["updated_at"] or "") >= stamp:
+            return False
+        row = c.execute("SELECT id FROM events WHERE dedup_key=?", (key,)).fetchone()
+        if row:
+            eid = row["id"]
+            c.execute(
+                """UPDATE events SET title=?,category=?,campus=?,deadline_start=?,deadline_end=?,
+                   deadline_raw=?,audience=?,materials=?,submission=?,evidence=?,source=?,importance=?,
+                   confidence=?,overall_confidence=?,status=?,updated_at=? WHERE dedup_key=?""",
+                values + (stamp, key),
+            )
+        else:
+            eid = "e_" + uuid.uuid4().hex[:10]
+            c.execute(
+                """INSERT INTO events(id,title,category,campus,deadline_start,deadline_end,deadline_raw,
+                   audience,materials,submission,evidence,source,importance,confidence,
+                   overall_confidence,status,dedup_key,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (eid,) + values + (key, data.get("created_at") or stamp, stamp),
+            )
+        c.execute(
+            """INSERT INTO user_events(user_id,event_id,relevance,reasons,created_at,done_at,updated_at)
+               VALUES(?,?,?,?,?,?,?)
+               ON CONFLICT(user_id,event_id) DO UPDATE SET
+                 relevance=excluded.relevance, reasons=excluded.reasons,
+                 done_at=excluded.done_at, updated_at=excluded.updated_at""",
+            (user_id, eid, float(data.get("relevance") or 0.5),
+             json.dumps(data.get("reasons") or [], ensure_ascii=False),
+             data.get("created_at") or stamp, data.get("done_at") or None, stamp),
+        )
+        c.execute(
+            """INSERT INTO event_sync(user_id,dedup_key,updated_at,deleted) VALUES(?,?,?,0)
+               ON CONFLICT(user_id,dedup_key) DO UPDATE SET
+                 updated_at=excluded.updated_at, deleted=0""",
+            (user_id, key, stamp),
+        )
+    return True
+
+
+def apply_sync_delete(user_id: str, key: str, stamp: str) -> bool:
+    """远端墓碑：本机同 key 事件被删除，除非本地版本更新。"""
+    if not key:
+        return False
+    with conn() as c:
+        meta = c.execute(
+            "SELECT updated_at FROM event_sync WHERE user_id=? AND dedup_key=?",
+            (user_id, key),
+        ).fetchone()
+        if meta and (meta["updated_at"] or "") >= stamp:
+            return False
+        row = c.execute("SELECT id FROM events WHERE dedup_key=?", (key,)).fetchone()
+        if row:
+            _delete_user_event_rows(c, user_id, row["id"])
+        _mark_sync_deleted(c, user_id, key, stamp)
+    return True
+
+
+def sync_changes(user_id: str, since: str) -> dict[str, Any]:
+    """返回 since 之后发生变化的远端事件与墓碑。"""
+    with conn() as c:
+        rows = c.execute(
+            """SELECT dedup_key, updated_at, deleted FROM event_sync
+               WHERE user_id=? AND updated_at>? ORDER BY updated_at""",
+            (user_id, since or ""),
+        ).fetchall()
+    stamps = {r["dedup_key"]: r["updated_at"] for r in rows}
+    events = [dict(e, updated_at=stamps.get(e.get("dedup_key"), ""))
+              for e in list_events(user_id) if e.get("dedup_key") in stamps]
+    deleted = [{"dedup_key": r["dedup_key"], "updated_at": r["updated_at"] or ""}
+               for r in rows if r["deleted"]]
+    return {"events": events, "deleted": deleted}

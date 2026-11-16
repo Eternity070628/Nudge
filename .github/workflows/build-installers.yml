@@ -138,3 +138,36 @@ jobs:
             dist/*-linux-${{ matrix.arch }}.AppImage
           if-no-files-found: error
           retention-days: 14
+
+  android:
+    name: Android arm64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+      - name: Build APK
+        working-directory: android
+        run: gradle --no-daemon assembleRelease
+      - name: Rename APK
+        run: |
+          VERSION=$(tr -d '\r\n' < packaging/version.txt)
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             "dist/Nudge-${VERSION}-android-arm64.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nudge-android-arm64
+          path: dist/Nudge-*-android-arm64.apk
+          if-no-files-found: error
+          retention-days: 14

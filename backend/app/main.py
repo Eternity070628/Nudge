@@ -23,8 +23,8 @@ from .auth import admin_router, current_user, require_admin, router as auth_rout
 from .config import BASE_DIR
 from .models import (AdminUserUpdate, CentralPresence, CentralSettingsUpdate,
                      EmailChangeRequest, EventCreate, ExtractRequest, MailSettingsUpdate,
-                     MailTestRequest, PasswordChangeRequest, SettingsCodeRequest)
-from .services import accounts, central, ics, mailer
+                     MailTestRequest, PasswordChangeRequest, SettingsCodeRequest, SyncPush)
+from .services import accounts, central, event_sync, ics, mailer
 from .services.seed import SAMPLES
 
 app = FastAPI(title="Nudge · 校园截止管家", version="2.1.0")
@@ -32,6 +32,7 @@ STATIC_DIR = Path(os.getenv("NUDGE_STATIC") or (BASE_DIR / "app" / "static"))
 
 db.init()
 central.configure()
+event_sync.start_loop()
 mailer.apply_db_settings()
 # 部署到新机器时，环境变量里的 refresh token 会在启动时落进本机数据库
 mailer.ensure_token()
@@ -386,23 +387,27 @@ def api_create(body: EventCreate, user: dict[str, Any] = Depends(current_user)) 
     draft = body.draft
     relevance, reasons = matcher.match(draft, user)
     event_id, created = db.save_event(draft, user["id"], relevance, reasons)
+    event_sync.schedule(user["id"])
     return {"id": event_id, "created": created}
 
 
 @app.get("/api/events")
 def api_events(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
+    event_sync.schedule(user["id"])
     return [_decorate(e) for e in db.list_events(user["id"])]
 
 
 @app.post("/api/events/{event_id}/done")
 def api_done(event_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     db.mark_done(user["id"], event_id)
+    event_sync.schedule(user["id"])
     return {"ok": True}
 
 
 @app.post("/api/events/{event_id}/undone")
 def api_undone(event_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     db.mark_active(user["id"], event_id)
+    event_sync.schedule(user["id"])
     return {"ok": True}
 
 
@@ -410,12 +415,32 @@ def api_undone(event_id: str, user: dict[str, Any] = Depends(current_user)) -> d
 def api_delete_event(event_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if not db.delete_event(user["id"], event_id):
         raise HTTPException(404, "事件不存在")
+    event_sync.schedule(user["id"])
     return {"ok": True}
+
+
+@app.get("/api/sync/events")
+def api_sync_state(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """本机事件全量快照，供调试与首次同步。"""
+    return {"since": db.get_user_settings(user["id"]).get("sync_since", ""),
+            **db.export_sync(user["id"])}
+
+
+@app.post("/api/sync/events")
+def api_sync_push(body: SyncPush, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """接收客户端全量事件做 LWW 合并，返回 since 之后的增量。"""
+    for event in body.events:
+        db.apply_sync_event(user["id"], event)
+    for item in body.deleted:
+        db.apply_sync_delete(user["id"], item.get("dedup_key") or "",
+                             item.get("updated_at") or "")
+    return {"now": db.now_iso(), **db.sync_changes(user["id"], body.since)}
 
 
 @app.get("/api/dashboard")
 def api_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     user_id = user["id"]
+    event_sync.schedule(user_id)
     events = [_decorate(e) for e in db.list_events(user_id)]
     active = [e for e in events if not e.get("done_at")]
     upcoming = [e for e in active if (e["days_left"] is None or e["days_left"] >= 0)]

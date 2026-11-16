@@ -129,6 +129,8 @@ nudge/
 
 桌面版启动（v2.1.0）：双击图标直接打开承载界面的独立应用窗口，任务栏显示 Nudge 进程，不再先弹控制窗口、也不再占用浏览器标签页。Windows 走系统 WebView2、macOS 走 WKWebView；关闭窗口最小化到系统托盘，托盘菜单可「打开 Nudge」或「退出」；再次双击图标会把已有窗口提到前台，不会重复起服务。缺少 WebView2 或 Linux 缺少 WebKitGTK 时，明确记录日志并回退为浏览器模式，界面功能不受影响。
 
+Android（v2.1.0）：`Nudge-<版本>-android-arm64.apk` 用 WebView 承载线上站点，登录同一中心账号即可管理事件；前台服务把最近一条截止事项常驻在通知栏，任一事件进入截止前 30 分钟会单独提醒。Android 没有 iOS 灵动岛的系统 API，国产 ROM 的胶囊形态不保证。手机端事件存在云端，桌面端通过 `/api/sync/events` 与中心双向同步：按 `dedup_key` 做 last-write-wins 合并，删除用墓碑记录，冲突以更新时间较新者为准。APK 由 CI 用 debug 证书签名，未做正式签名。
+
 ### 6.1.1 线上真发信：Brevo（走 443，免费额度 300 封/天）
 
 出站 SMTP 被封死的免费主机，用 Brevo 的 HTTPS 邮件 API 就能真发：

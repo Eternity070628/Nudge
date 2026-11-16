@@ -165,3 +165,9 @@ class BindRequest(BaseModel):
     email: str
     password: str
     code: str
+
+
+class SyncPush(BaseModel):
+    since: str = ""
+    events: list[dict] = []
+    deleted: list[dict] = []

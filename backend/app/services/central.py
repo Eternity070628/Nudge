@@ -146,6 +146,17 @@ def admin_delete(token: str, central_id: str) -> dict:
     return body
 
 
+def sync_events(token: str, since: str, events: list, deleted: list) -> dict:
+    """把本机事件推给中心，并取回中心侧自 since 之后的变更。"""
+    body, _ = _request(
+        "/api/sync/events",
+        method="POST",
+        payload={"since": since, "events": events, "deleted": deleted},
+        token=token,
+    )
+    return body
+
+
 def session_token(user_id: str) -> str:
     return db.get_central_session(user_id)
 

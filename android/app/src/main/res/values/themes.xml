@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Nudge" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FFF7ED</item>
+        <item name="android:statusBarColor">#F97316</item>
+    </style>
+</resources>
