@@ -234,7 +234,7 @@ def api_demo(response: Response) -> dict[str, Any]:
 
 def _merge_users(central_users: list[dict[str, Any]],
                  local_users: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """以中心账号为主干合并本机镜像；只在网页版存在的账号标记为只读。"""
+    """同一账号只出现一行：有应用端镜像的以镜像为主，纯网页版的以中心为主。"""
     by_central = {str(u.get("central_id")): u for u in local_users if u.get("central_id")}
     by_email = {
         (u.get("email") or "").strip().lower(): u
@@ -248,11 +248,12 @@ def _merge_users(central_users: list[dict[str, Any]],
         item["central_id"] = central_id
         local = by_central.get(central_id)
         if local is None:
-            local = by_email.get((account.get("email") or "").strip().lower())
+            candidate = by_email.get((account.get("email") or "").strip().lower())
+            local = candidate if candidate and candidate["id"] not in seen else None
         if local:
             seen.add(local["id"])
             item.update({
-                "id": local["id"], "local_id": local["id"],
+                "id": local["id"], "local_id": local["id"], "source": "app",
                 "event_count": local.get("event_count", 0),
                 "has_key": local.get("has_key", False),
                 "campus": local.get("campus") or account.get("campus") or "",
@@ -260,7 +261,7 @@ def _merge_users(central_users: list[dict[str, Any]],
             })
         else:
             item.update({
-                "id": "central:" + central_id, "local_id": "",
+                "id": "central:" + central_id, "local_id": "", "source": "web",
                 "event_count": 0, "has_key": bool(account.get("has_key")),
                 "remote_only": True, "local_only": False, "central_missing": False,
             })
@@ -272,7 +273,8 @@ def _merge_users(central_users: list[dict[str, Any]],
         item.setdefault("central_id", "")
         missing = bool(item["central_id"])
         item.update({"local_id": local["id"], "remote_only": False,
-                     "local_only": not missing, "central_missing": missing})
+                     "local_only": not missing, "central_missing": missing,
+                     "source": "app"})
         merged.append(item)
     return merged
 

@@ -317,7 +317,6 @@ textarea.edit-input{resize:vertical;line-height:1.5}
   .stats{grid-template-columns:repeat(2,1fr)}
   .bottom{padding:0 20px 24px;flex-direction:column}
   .admin-main{padding:0 20px}
-  .user-row{grid-template-columns:1fr;gap:4px}
   .auth-card{padding:20px}
   .top-right{justify-content:flex-start}
 }
@@ -467,7 +466,15 @@ textarea.edit-input{resize:vertical;line-height:1.5}
 .check-line input{width:auto !important;margin:0 !important;accent-color:var(--amber)}
 #mail-smtp-fields,#mail-brevo-fields{margin-top:4px}
 
-.user-row{grid-template-columns:24px minmax(110px,1.2fr) minmax(150px,1.5fr) 92px 78px 118px auto}
+.user-row{grid-template-columns:24px minmax(0,1.2fr) minmax(0,1.6fr) 92px 78px 110px;
+  grid-template-rows:auto auto;gap:10px 12px;align-items:center}
+.user-check{grid-column:1;grid-row:1;align-self:center}
+.user-main{grid-column:2;grid-row:1}
+.user-email{grid-column:3;grid-row:1}
+.user-status{grid-column:4;grid-row:1}
+.user-count{grid-column:5;grid-row:1}
+.user-key{grid-column:6;grid-row:1}
+.user-actions{grid-column:2 / -1;grid-row:2;justify-content:flex-end;flex-wrap:wrap}
 .user-status{font-size:11px;line-height:1.45;white-space:nowrap}
 .user-status b{display:inline-flex;align-items:center;gap:5px;font-weight:600}
 .user-status b::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dim)}
@@ -478,10 +485,17 @@ textarea.edit-input{resize:vertical;line-height:1.5}
 .user-status small{display:block;color:var(--dim);font-size:10px;margin-top:2px}
 .user-key{font-size:10.5px;color:var(--dim)}
 .user-key.set{color:var(--teal)}
-@media(max-width:760px){
-  .user-row{grid-template-columns:20px 1fr 1fr;gap:6px}
-  .user-check{grid-row:span 5}
-  .user-actions{grid-column:2 / 4}
+@media(max-width:620px){
+  .user-row{grid-template-columns:20px 1fr;grid-template-rows:repeat(6,auto);gap:6px}
+  .user-check{grid-column:1;grid-row:1;align-self:start;margin-top:2px}
+  .user-main{grid-column:2;grid-row:1}
+  .user-email{grid-column:2;grid-row:2}
+  .user-status{grid-column:2;grid-row:3}
+  .user-count{grid-column:2;grid-row:4;text-align:left}
+  .user-key{grid-column:2;grid-row:5}
+  .user-actions{grid-column:2;grid-row:6;display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .user-actions .btn-mini{min-width:0;width:100%}
 }
 
 .global-user{display:grid;grid-template-columns:minmax(120px,1fr) minmax(150px,1.3fr) 84px minmax(200px,1.5fr);

@@ -1179,7 +1179,7 @@ function renderAdminRow(u) {
   };
   row.appendChild(check);
   const tag = (u.is_admin ? " · 管理员" : "")
-    + (remote ? " · 仅网页版" : missing ? " · 中心已删除" : (u.local_only ? " · 仅本机" : ""));
+    + (missing ? " · 应用端 · 中心已删除" : (remote ? " · 网页端" : " · 应用端"));
   row.appendChild(el("div", "user-main", (u.name || "未命名") + tag));
   row.appendChild(el("div", "user-email", u.email || "无邮箱"));
   const status = el("div", "user-status " + (u.status_key || "idle"));
@@ -1236,7 +1236,7 @@ async function loadAdminUsers() {
     const remote = data.users.filter((u) => u.remote_only).length;
     const missing = data.users.filter((u) => u.central_missing).length;
     let count = data.users.length + " 人";
-    if (data.central) count += " · 与网页版一致，" + remote + " 个仅网页版";
+    if (data.central) count += " · 与网页版一致，" + remote + " 个网页端";
     if (missing) count += "，" + missing + " 个中心已删除";
     if (data.error) count += " · 中心暂不可达：" + data.error;
     $("admin-count").textContent = count;
