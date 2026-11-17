@@ -1192,12 +1192,10 @@ function renderAdminRow(u) {
     : (u.has_key ? "Key 已配" : "未配 Key");
   row.appendChild(el("div", "user-key" + (u.has_key ? " set" : ""), keyText));
   const actions = el("div", "user-actions");
-  if (!remote) {
-    const view = el("button", "btn ghost btn-mini", "查看");
-    view.type = "button";
-    view.onclick = () => loadAdminCompare([u.id]);
-    actions.appendChild(view);
-  }
+  const view = el("button", "btn ghost btn-mini", "查看");
+  view.type = "button";
+  view.onclick = () => loadAdminCompare([u.id]);
+  actions.appendChild(view);
   const edit = el("button", "btn ghost btn-mini", "编辑");
   edit.type = "button";
   edit.onclick = () => openAdminEdit(u);
@@ -1287,16 +1285,27 @@ async function loadAdminCompare(ids) {
   box.classList.remove("hidden");
   box.innerHTML = "";
   try {
-    const data = await api("/api/admin/users/detail?ids=" + encodeURIComponent(ids.join(",")));
+    const localIds = ids.filter((id) => !id.startsWith("central:"));
+    const remoteIds = ids.filter((id) => id.startsWith("central:"))
+      .map((id) => id.slice("central:".length));
+    const requests = [];
+    if (localIds.length) {
+      requests.push(api("/api/admin/users/detail?ids=" + encodeURIComponent(localIds.join(","))));
+    }
+    if (remoteIds.length) {
+      requests.push(api("/api/admin/users/remote-detail?ids=" + encodeURIComponent(remoteIds.join(","))));
+    }
+    const results = await Promise.all(requests);
+    const users = results.flatMap((item) => item.users || []);
     const head = el("div", "detail-head");
-    head.appendChild(el("b", null, ids.length > 1 ? "用户对比 · " + data.users.length + " 人" : "用户详情"));
+    head.appendChild(el("b", null, users.length > 1 ? "用户对比 · " + users.length + " 人" : "用户详情"));
     const close = el("button", "btn ghost btn-mini", "关闭");
     close.type = "button";
     close.onclick = () => box.classList.add("hidden");
     head.appendChild(close);
     box.appendChild(head);
-    const grid = el("div", "compare-grid" + (data.users.length > 1 ? " multi" : ""));
-    data.users.forEach((item) => grid.appendChild(compareColumn(item)));
+    const grid = el("div", "compare-grid" + (users.length > 1 ? " multi" : ""));
+    users.forEach((item) => grid.appendChild(compareColumn(item)));
     box.appendChild(grid);
   } catch (e) {
     box.textContent = e.message;

@@ -18,11 +18,11 @@ from . import llm
 CATEGORY_WORDS: dict[str, list[str]] = {
     "competition": ["大赛", "竞赛", "比赛", "挑战赛", "创新创业", "赛道"],
     "scholarship": ["奖学金", "助学金", "评优", "评奖", "荣誉称号"],
-    "lecture": ["讲座", "报告会", "沙龙", "分享会", "论坛", "宣讲"],
-    "exam": ["考试", "补考", "缓考", "四六级", "机考", "笔试"],
+    "lecture": ["讲座", "报告会", "沙龙", "分享会", "论坛", "宣讲", "学术报告", "讲堂"],
+    "exam": ["考试", "补考", "缓考", "四六级", "机考", "笔试", "统考", "考试报名"],
     "affairs": ["办理", "盖章", "材料提交", "学籍", "证明", "报销", "注册", "选课",
-                "转专业", "缴费", "参保", "评教", "证明"],
-    "activity": ["志愿服务", "献血", "公益活动", "社会实践"],
+                "转专业", "缴费", "参保", "评教", "补办", "开具", "领取", "申请表"],
+    "activity": ["志愿服务", "志愿", "志愿者", "献血", "公益活动", "社会实践", "招募", "马拉松"],
 }
 
 IMPORTANCE_WORDS = ["学分", "保研", "推免", "评优", "奖学金", "国家级", "一等奖", "必须", "强制"]
@@ -37,7 +37,10 @@ CAMPUS_LABELS = {"haidian": "海淀校区", "shahe": "沙河校区", "hainan": "
 
 SENT_SPLIT = re.compile(r"[。；;！!？?\n]+")
 
-DATE_TOKEN = r"(?:(?:\d{4}年)?\d{1,2}月\d{1,2}日(?:\s*\d{1,2}[:：]\d{2})?|\d{4}-\d{1,2}-\d{1,2}(?:[ T]\d{1,2}:\d{2})?)"
+DATE_TOKEN = (
+    r"(?:(?:\d{4}年)?\d{1,2}月\d{1,2}[日号](?:\s*\d{1,2}[:：]\d{2})?"
+    r"|\d{4}[./-]\d{1,2}[./-]\d{1,2}(?:[ T]\d{1,2}:\d{2})?)"
+)
 REL_TOKEN = r"(?:今天|明天|后天|本周[一二三四五六日天]|下周[一二三四五六日天]|本月\d{1,2}日|月底)"
 
 DEADLINE_PATTERNS: list[tuple[re.Pattern, float]] = [
@@ -47,6 +50,7 @@ DEADLINE_PATTERNS: list[tuple[re.Pattern, float]] = [
     (re.compile(r"即日起至\s*(" + DATE_TOKEN + r")"), 0.9),
     (re.compile(r"(" + DATE_TOKEN + r")\s*(?:前|之前|截止|以前)"), 0.9),
     (re.compile(r"(?:请于|须于|务必于)\s*(" + DATE_TOKEN + r")"), 0.88),
+    (re.compile(r"(?:最晚|最迟|不晚于|务必在|请于|须于)[^。；;\n]{0,12}?(" + DATE_TOKEN + r")"), 0.88),
     (re.compile(r"(?:截止|截至)[^。；;\n]{0,8}?(" + REL_TOKEN + r")"), 0.7),
     (re.compile(r"(?:活动时间|讲座时间|举办时间|会议时间|时间)[:：]\s*(" + DATE_TOKEN + r")"), 0.72),
     (re.compile(r"\b(\d{4}-\d{1,2}-\d{1,2}[ T]\d{1,2}:\d{2})\b"), 0.9),
@@ -69,7 +73,9 @@ def _evidence(text: str, needle: str) -> str:
 
 def _parse_date_token(tok: str, anchor: date) -> datetime | None:
     tok = tok.replace("：", ":").strip()
-    m = re.search(r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*(?:(\d{1,2}):(\d{2}))?", tok)
+    m = re.search(r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})[日号]\s*(?:(\d{1,2}):(\d{2}))?", tok)
+    if not m:
+        m = re.search(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?", tok)
     if m:
         year = int(m.group(1)) if m.group(1) else anchor.year
         month, day = int(m.group(2)), int(m.group(3))
@@ -209,9 +215,13 @@ def _find_audience(text: str) -> tuple[Audience, str]:
     return Audience(grades=grades[:4], majors=[], colleges=colleges, raw=raw), raw
 
 
-MATERIAL_KEYS = ("提交材料", "材料清单", "需提交", "需提供", "申报材料", "报名材料",
-                 "包括以下", "准备以下", "材料包括", "需准备")
-ITEM_LINE = re.compile(r"(?:^|\n)\s*(?:[一二三四五六七八九十]+[、.]|\d+[、.）)]|[（(]\d+[)）]|[①②③④⑤⑥⑦⑧⑨⑩])\s*([^\n；;。]{2,40})")
+MATERIAL_KEYS = ("提交材料", "材料清单", "材料要求", "需提交", "需提供", "需交", "应提交",
+                 "申报材料", "申请材料", "报名材料", "包括以下", "准备以下", "材料包括", "需准备")
+ITEM_LINE = re.compile(
+    r"(?:^|\n|\s|[：:，,、；;])(?:[一二三四五六七八九十]+[、.]|\d+[、.）)]|[（(]\d+[)）]|[①②③④⑤⑥⑦⑧⑨⑩])\s*"
+    r"([^\n；;。]{2,40}?)"
+    r"(?=\s*(?:[一二三四五六七八九十]+[、.]|\d+[、.）)]|[（(]\d+[)）]|[①②③④⑤⑥⑦⑧⑨⑩])|\s*$)"
+)
 
 
 def _find_materials(text: str) -> tuple[list[Material], str]:
@@ -227,8 +237,12 @@ def _find_materials(text: str) -> tuple[list[Material], str]:
         items = [i for i in items if 2 <= len(i) <= 40 and not i.startswith(skip)][:8]
         if items:
             return [Material(name=i) for i in items], _evidence(text, key)
-        # 无编号时，取关键词后一小段
+        # 无编号时，取关键词后一小段，按顿号/逗号切分
         tail = re.split(r"[。\n]", window[len(key):])[0].strip(" ：:，,")
+        parts = [p.strip(" ：:，,、") for p in re.split(r"[、，,；;]|以及|和", tail)]
+        parts = [p for p in parts if 2 <= len(p) <= 40][:8]
+        if len(parts) >= 2:
+            return [Material(name=p) for p in parts], _evidence(text, key)
         if 2 <= len(tail) <= 80:
             return [Material(name=tail)], _evidence(text, key)
     return [], ""

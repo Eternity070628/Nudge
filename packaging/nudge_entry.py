@@ -17,11 +17,36 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 import webbrowser
 from pathlib import Path
 
 APP_TITLE = "Nudge · 校园截止管家"
+
+LOADING_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<style>
+html,body{height:100%;margin:0;background:#fff7ed;color:#7c2d12;
+font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif}
+.wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.logo{font-size:28px;font-weight:700;letter-spacing:.5px}
+.tip{font-size:13px;color:#9a3412}
+.dot{display:inline-block;width:6px;height:6px;margin:0 3px;border-radius:50%;
+background:#f97316;animation:b 1s infinite}
+.dot:nth-child(2){animation-delay:.15s}.dot:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
+</style></head><body><div class="wrap"><div class="logo">Nudge</div>
+<div class="tip">正在启动本地服务<span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+</div></body></html>"""
+
+ERROR_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<style>html,body{height:100%;margin:0;background:#fff7ed;color:#7c2d12;
+font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif}
+.wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+b{font-size:18px}.tip{font-size:13px;color:#9a3412;max-width:520px;text-align:center;line-height:1.6}
+</style></head><body><div class="wrap"><b>启动超时</b>
+<div class="tip">本地服务没有在预期时间内就绪。请关闭窗口后重新打开；仍失败请查看数据目录下的 nudge.log。</div>
+</div></body></html>"""
 
 
 def bundle_root() -> Path:
@@ -108,14 +133,23 @@ def local_opener():
 
 def health(port: int):
     try:
-        with local_opener().open(f"http://127.0.0.1:{port}/api/health", timeout=0.5) as response:
+        with local_opener().open(f"http://127.0.0.1:{port}/api/health", timeout=0.2) as response:
             return json.loads(response.read().decode("utf-8"))
     except Exception:
         return None
 
 
-def find_running():
-    for port in range(8000, 8030):
+def find_running(data_dir: Path | None = None):
+    """优先信任实例文件，避免逐个端口等超时导致启动慢。"""
+    if data_dir is not None:
+        try:
+            state = json.loads((data_dir / "instance.json").read_text(encoding="utf-8"))
+            port = int(state.get("port") or 0)
+            if port and health(port):
+                return port
+        except Exception:
+            pass
+    for port in range(8000, 8010):
         data = health(port)
         if data and data.get("app") == "nudge":
             return port
@@ -237,7 +271,7 @@ def focus_existing(data_dir: Path) -> bool:
         return False
 
 
-def start_focus_channel(data_dir: Path, on_focus) -> int:
+def start_focus_channel(data_dir: Path, on_focus, app_port: int = 0) -> int:
     """监听本机唤起请求；再次双击图标时把已有窗口提到前台。"""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(("127.0.0.1", 0))
@@ -245,7 +279,7 @@ def start_focus_channel(data_dir: Path, on_focus) -> int:
     port = server.getsockname()[1]
     try:
         (data_dir / "instance.json").write_text(
-            json.dumps({"control": port}), encoding="utf-8"
+            json.dumps({"port": app_port, "control": port}), encoding="utf-8"
         )
     except OSError:
         logging.warning("无法写入 instance.json，再次双击不会唤起已有窗口")
@@ -325,9 +359,26 @@ def run_app(server, url: str, data_dir: Path, no_browser: bool,
         return run_gui(server, url, data_dir, no_browser)
 
     window = webview.create_window(
-        APP_TITLE, url, width=1200, height=780, min_size=(900, 620),
+        APP_TITLE, html=LOADING_HTML, width=1200, height=780, min_size=(900, 620),
     )
     _runtime["window"] = window
+
+    def boot():
+        port = urllib.parse.urlparse(url).port or 80
+        if not wait_until_ready(port):
+            logging.error("服务启动超时：%s", url)
+            try:
+                window.load_html(ERROR_HTML)
+            except Exception:
+                pass
+            return
+        logging.info("Nudge 已就绪：%s", url)
+        try:
+            window.load_url(url)
+        except Exception:
+            logging.exception("加载页面失败")
+
+    threading.Thread(target=boot, name="nudge-boot", daemon=True).start()
 
     def restore():
         try:
@@ -346,7 +397,7 @@ def run_app(server, url: str, data_dir: Path, no_browser: bool,
         return True
 
     window.events.closing += on_closing
-    start_focus_channel(data_dir, lambda: restore())
+    start_focus_channel(data_dir, lambda: restore(), urllib.parse.urlparse(url).port or 80)
     if not window_check:
         start_tray(window, server, restore)
     else:
@@ -361,6 +412,7 @@ def run_app(server, url: str, data_dir: Path, no_browser: bool,
                 tray.stop()
             except Exception:
                 pass
+        wait_until_ready(urllib.parse.urlparse(url).port or 80)
         return run_gui(server, url, data_dir, no_browser)
     server.should_exit = True
     return 0
@@ -379,7 +431,7 @@ def main(argv=None) -> int:
     setup_logging(data_dir)
     logging.info("Nudge 启动：bundle=%s data=%s static=%s", root, data_dir, static_dir)
 
-    running = find_running()
+    running = find_running(data_dir)
     if running:
         logging.info("已有 Nudge 实例运行在端口 %s", running)
         if not focus_existing(data_dir):
@@ -408,9 +460,6 @@ def main(argv=None) -> int:
     thread = threading.Thread(target=server.run, name="nudge-server", daemon=True)
     thread.start()
 
-    if not wait_until_ready(port):
-        raise RuntimeError(f"服务启动超时，请检查日志：{data_dir / 'nudge.log'}")
-    logging.info("Nudge 已就绪：%s", url)
     if args.headless:
         return run_headless(server, url, args.no_browser)
     return run_app(server, url, data_dir, args.no_browser, args.window_check)

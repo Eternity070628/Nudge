@@ -134,6 +134,13 @@ def admin_users(token: str) -> dict:
     return body
 
 
+def admin_users_detail(token: str, ids: list[str]) -> dict:
+    """按中心 id 取用户的事件与模型配置，供应用端管理端并排查看。"""
+    query = urllib.parse.urlencode({"ids": ",".join(ids)})
+    body, _ = _request("/api/admin/users/detail?" + query, method="GET", token=token)
+    return body
+
+
 def admin_update(token: str, central_id: str, payload: dict) -> dict:
     body, _ = _request("/api/admin/users/" + urllib.parse.quote(central_id, safe=""),
                        method="PATCH", payload=payload, token=token)

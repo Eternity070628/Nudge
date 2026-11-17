@@ -352,6 +352,29 @@ def api_admin_user_detail(user_id: str, _: dict[str, Any] = Depends(require_admi
     return _admin_detail(user_id)
 
 
+@admin_router.get("/users/remote-detail")
+def api_admin_remote_detail(ids: str = Query(""),
+                            admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """看网页版账号的事件与模型；数据由中心返回，应用端不复制。"""
+    wanted = [item.strip() for item in ids.split(",") if item.strip()][:6]
+    if not wanted:
+        raise HTTPException(400, "请至少选择一个网页版账号")
+    token = _central_admin_token(admin)
+    try:
+        data = central.admin_users_detail(token, wanted)
+    except central.CentralError as error:
+        _central_failure(error)
+    users = []
+    for item in data.get("users") or []:
+        item = dict(item)
+        user = dict(item.get("user") or {})
+        user["remote_only"] = True
+        user["id"] = CENTRAL_PREFIX + str(user.get("id") or "")
+        item["user"] = user
+        users.append(item)
+    return {"users": users}
+
+
 CENTRAL_PREFIX = "central:"
 
 
